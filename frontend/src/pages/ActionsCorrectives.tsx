@@ -66,7 +66,12 @@ export default function ActionsCorrectives() {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   const initialRows = useMemo(() => {
-    if (!currentAudit) return [];
+    if (!currentAudit) {
+      console.log('[ActionsCorrectives] Pas d\'audit chargé');
+      return [];
+    }
+
+    console.log('[ActionsCorrectives] Génération des lignes depuis l\'audit:', currentAudit);
 
     // Générer automatiquement les lignes à partir des observations de l'audit
     const rows: CorrectiveActionRow[] = [];
@@ -74,16 +79,21 @@ export default function ActionsCorrectives() {
     
     // Si l'auditeur a déjà enregistré des actions correctives, les garder en mémoire
     if (currentAudit.correctiveActions && currentAudit.correctiveActions.length > 0) {
+      console.log('[ActionsCorrectives] Actions correctives existantes:', currentAudit.correctiveActions.length);
       currentAudit.correctiveActions.forEach((row) => {
         existingRowsMap.set(row.id, row);
       });
     }
     
     // Parcourir toutes les catégories et items pour générer les lignes
+    let totalObservations = 0;
     currentAudit.categories.forEach((category) => {
       category.items.forEach((item) => {
-        // Prendre tous les items qui ont des observations (même sans non-conformité)
+        // Prendre tous les items qui ont des observations
         if (item.observations && item.observations.length > 0) {
+          totalObservations += item.observations.length;
+          console.log(`[ActionsCorrectives] Item "${item.name}" a ${item.observations.length} observation(s)`);
+          
           item.observations.forEach((obs) => {
             if (obs && obs.text && obs.text.trim()) {
               const rowId = `${category.id}-${item.id}-${obs.id}`;
@@ -113,6 +123,9 @@ export default function ActionsCorrectives() {
       });
     });
     
+    console.log(`[ActionsCorrectives] Total observations trouvées: ${totalObservations}`);
+    console.log(`[ActionsCorrectives] Lignes générées: ${rows.length}`);
+    
     // Ajouter les lignes sauvegardées qui ne correspondent à aucune observation actuelle
     // (pour garder les lignes ajoutées manuellement par l'auditeur)
     existingRowsMap.forEach((row) => {
@@ -120,6 +133,8 @@ export default function ActionsCorrectives() {
         rows.push(row);
       }
     });
+    
+    console.log(`[ActionsCorrectives] Lignes finales (avec lignes manuelles): ${rows.length}`);
     
     return rows;
   }, [currentAudit]);
