@@ -68,14 +68,42 @@ export default function ActionsCorrectives() {
   const initialRows = useMemo(() => {
     if (!currentAudit) return [];
 
-    // Ne retourner que les données déjà enregistrées par l'auditeur
-    // Pas de pré-remplissage avec les observations
+    // Si l'auditeur a déjà enregistré des actions correctives, les utiliser
     if (currentAudit.correctiveActions && currentAudit.correctiveActions.length > 0) {
       return currentAudit.correctiveActions;
     }
 
-    // Tableau vide - l'auditeur doit tout remplir manuellement
-    return [];
+    // Sinon, pré-remplir automatiquement avec les observations de l'audit
+    const rows: CorrectiveActionRow[] = [];
+    
+    currentAudit.categories.forEach((category) => {
+      category.items.forEach((item) => {
+        // Ne prendre que les items qui ont des non-conformités (note < 1.0)
+        const hasNonConformity = item.numberOfNonConformities !== null && item.numberOfNonConformities > 0;
+        
+        if (hasNonConformity && item.observations && item.observations.length > 0) {
+          item.observations.forEach((obs) => {
+            if (obs && obs.text && obs.text.trim()) {
+              // Construire le texte de l'écart : Catégorie - Item - Observation
+              const categoryName = category.name.replace(/^\d+\.\s*/, '');
+              const ecartText = `${categoryName} - ${item.name}\n${obs.text}`;
+              
+              rows.push({
+                id: `${category.id}-${item.id}-${obs.id}`,
+                ecart: ecartText,
+                actionCorrective: obs.correctiveAction || '',
+                delai: '',
+                quand: '',
+                visa: '',
+                verification: '',
+              });
+            }
+          });
+        }
+      });
+    });
+    
+    return rows;
   }, [currentAudit]);
 
   const [rows, setRows] = useState<CorrectiveActionRow[]>(initialRows);
