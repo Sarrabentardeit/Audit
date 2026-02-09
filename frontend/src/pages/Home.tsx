@@ -1,4 +1,4 @@
-import { Button, Typography, Box, Card, CardContent, Grid } from '@mui/material';
+import { Button, Typography, Box, Card, CardContent } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuditStore } from '../store/auditStore';
 import { loadCategoriesFromJSON } from '../services/dataLoader';

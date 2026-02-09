@@ -110,7 +110,7 @@ export function calculatePotentialFines(items: { ko: number; isAudited: boolean 
  * Calculer tous les résultats d'un audit
  */
 export function calculateResults(audit: Audit): AuditResults {
-  const categoryScores: Record<string, number> = {};
+  const categoryScores: Record<string, number | null> = {};
   let totalScore: number | null = null;
   let totalKO = 0;
   let hasAuditedItems = false;

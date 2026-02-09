@@ -12,7 +12,6 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CloseIcon from '@mui/icons-material/Close';
-import ZoomInIcon from '@mui/icons-material/ZoomIn';
 
 interface PhotoGalleryProps {
   photos: string[]; // Array de base64 strings
