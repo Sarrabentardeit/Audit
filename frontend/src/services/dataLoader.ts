@@ -33,6 +33,7 @@ interface JSONCategory {
 
 interface JSONData {
   categories: JSONCategory[];
+  observations: Record<string, Array<{ observation: string; action: string }>>;
 }
 
 // Charger les données depuis le fichier public
@@ -50,11 +51,29 @@ export async function loadCategoriesFromJSON(): Promise<AuditCategory[]> {
 
   auditData.categories.forEach((cat, catIndex) => {
     const items: AuditItem[] = cat.items.map((item, itemIndex) => {
-      const observations: Observation[] = item.comments.map((comment, obsIndex) => ({
-        id: `obs-${catIndex}-${itemIndex}-${obsIndex}`,
-        text: comment,
-        action: item.actions[obsIndex] || undefined,
-      }));
+      // Charger les observations possibles depuis la section "observations" du JSON
+      const observationOptions = auditData.observations[item.name] || [];
+      
+      // Extraire toutes les observations uniques (pour la liste déroulante)
+      const observationsSet = new Set<string>();
+      observationOptions.forEach(opt => {
+        if (opt.observation && opt.observation.trim() !== '') {
+          observationsSet.add(opt.observation.trim());
+        }
+      });
+      const availableObservations = Array.from(observationsSet).sort();
+      
+      // Extraire toutes les actions correctives uniques (pour la liste déroulante)
+      const actionsSet = new Set<string>();
+      observationOptions.forEach(opt => {
+        if (opt.action && opt.action.trim() !== '') {
+          actionsSet.add(opt.action.trim());
+        }
+      });
+      const availableCorrectiveActions = Array.from(actionsSet).sort();
+      
+      // Initialiser les observations sélectionnées (vide par défaut)
+      const observations: Observation[] = [];
 
       // Déterminer la classification (par défaut 'multiple' si non trouvée)
       const classification: ItemClassification = ITEM_CLASSIFICATIONS[item.name] || 'multiple';
@@ -64,9 +83,14 @@ export async function loadCategoriesFromJSON(): Promise<AuditCategory[]> {
         name: item.name,
         ponderation: item.ponderation,
         classification,
-        numberOfNonConformities: 0, // Par défaut 0 (conforme)
-        note: undefined, // Sera calculée automatiquement
-        observations,
+        numberOfNonConformities: null, // Par défaut null (EN ATTENTE)
+        note: undefined, // Sera calculée automatiquement quand audité
+        ko: 0, // Par défaut 0 KO (champ manuel, indépendant des notes)
+        isAudited: false, // Pas encore audité par défaut
+        observations, // Liste vide par défaut, l'auditeur sélectionnera
+        observationOptions, // Toutes les options possibles (depuis JSON)
+        availableObservations, // Liste de toutes les observations uniques (pour dropdown)
+        availableCorrectiveActions, // Liste de toutes les actions uniques (pour dropdown)
         photos: [],
         comments: '',
       };

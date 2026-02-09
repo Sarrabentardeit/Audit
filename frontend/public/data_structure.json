@@ -97,11 +97,11 @@
           ]
         },
         {
-          "name": "Affichage ",
+          "name": "Affichage (allergènes, origines des viandes…)",
           "ponderation": 0.334,
           "note": 0.334,
           "comments": [
-            "Présence des affichages "
+            "Présence de l'affichage des allergènes et origine des viandes"
           ],
           "actions": [
             "Conforme"
@@ -216,6 +216,14 @@
       {
         "observation": "Entrée potentielle de nuisibles",
         "action": "Toutes les ouvertures doivent être fermées"
+      },
+      {
+        "observation": "Contrat 3D en place",
+        "action": "Mettre en place un contrat"
+      },
+      {
+        "observation": "Entrée potentielle de nuisibles",
+        "action": "Utiliser un désinsectiseur"
       }
     ],
     "Maintenance des locaux et équipements": [

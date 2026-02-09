@@ -36,12 +36,20 @@ export const LABEL_NOTES: Record<NoteLabel, AuditNote> = {
 export type ItemClassification = 'binary' | 'multiple';
 
 /**
- * Observation/commentaire pour un item
+ * Observation sélectionnée pour un item (avec action corrective liée)
  */
 export interface Observation {
   id: string;
-  text: string;
-  action?: string;
+  text: string; // Texte de l'observation sélectionnée
+  correctiveAction?: string; // Action corrective associée à cette observation (optionnelle)
+}
+
+/**
+ * Option d'observation possible pour un item (depuis JSON)
+ */
+export interface ObservationOption {
+  observation: string;
+  action: string; // Utilisé uniquement pour extraire les actions possibles
 }
 
 /**
@@ -50,11 +58,16 @@ export interface Observation {
 export interface AuditItem {
   id: string;
   name: string;
-  ponderation: number; // Poids dans le calcul (ex: 0.333, 0.5)
+  ponderation: number; // Poids dans le calcul (ex: 0.333, 0.5) - utilisé uniquement pour le calcul, pas affiché
   classification: ItemClassification; // Classification binaire ou multiple
-  numberOfNonConformities: number; // Nombre de non-conformités (0, 1, 2, >3)
+  numberOfNonConformities: number | null; // Nombre de non-conformités (null = EN ATTENTE, 0 = conforme)
   note?: AuditNote; // Note calculée automatiquement selon classification et numberOfNonConformities
-  observations: Observation[];
+  ko: number; // Nombre de KO (champ manuel, indépendant des notes) - violations spécifiques qui engendrent une amende
+  isAudited: boolean; // Indique si l'utilisateur a interagi avec cet item
+  observations: Observation[]; // Observations sélectionnées par l'auditeur (chacune peut avoir une action corrective)
+  observationOptions: ObservationOption[]; // Toutes les observations possibles pour cet item (depuis JSON)
+  availableObservations: string[]; // Liste de toutes les observations uniques possibles (pour dropdown)
+  availableCorrectiveActions: string[]; // Liste de toutes les actions correctives uniques possibles (pour dropdown)
   photos: string[]; // URLs ou base64 des photos
   comments: string; // Commentaires libres
 }
@@ -71,11 +84,22 @@ export interface AuditCategory {
 /**
  * Données d'un audit complet
  */
+export interface CorrectiveActionData {
+  id: string;
+  ecart: string;
+  actionCorrective: string;
+  delai: string;
+  quand: string;
+  visa: string;
+  verification: string;
+}
+
 export interface Audit {
   id: string;
   dateExecution: string; // Format: YYYY-MM-DD
   adresse: string;
   categories: AuditCategory[];
+  correctiveActions?: CorrectiveActionData[]; // Actions correctives remplissables
   createdAt: string;
   updatedAt: string;
   synced: boolean; // Si synchronisé avec le serveur
@@ -85,10 +109,11 @@ export interface Audit {
  * Résultats calculés d'un audit
  */
 export interface AuditResults {
-  totalScore: number; // Score total en pourcentage
-  numberOfKO: number; // Nombre de non-conformités
+  totalScore: number | null; // Score total en pourcentage (null si pas encore calculé ou aucune catégorie auditées)
+  numberOfKO: number; // Nombre de KO (somme des KO manuels)
   potentialFines: number; // Amendes potentielles en euros
-  categoryScores: Record<string, number>; // Score par catégorie
+  categoryScores: Record<string, number | null>; // Score par catégorie (null si non auditées)
+  hasAuditedItems: boolean; // Indique si au moins un item a été audité
 }
 
 /**

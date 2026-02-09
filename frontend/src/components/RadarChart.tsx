@@ -30,3 +30,4 @@ export default function RadarChartComponent({ data, width = 400, height = 400 }:
   );
 }
 
+

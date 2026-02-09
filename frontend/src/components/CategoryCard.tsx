@@ -23,9 +23,16 @@ export default function CategoryCard({ category }: CategoryCardProps) {
   const { results } = useAuditStore();
 
   const categoryScore = useMemo(() => {
-    if (!results) return 0;
-    return results.categoryScores[category.id] || 0;
+    if (!results) return null;
+    const score = results.categoryScores[category.id];
+    // Le score peut être null si tous les items sont EN ATTENTE
+    return score !== undefined ? score : null;
   }, [results, category.id]);
+
+  // Vérifier si au moins un item de cette catégorie a été audité
+  const hasAuditedItems = useMemo(() => {
+    return category.items.some(item => item.isAudited);
+  }, [category.items]);
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return 'success';
@@ -47,18 +54,26 @@ export default function CategoryCard({ category }: CategoryCardProps) {
             </Typography>
           </Box>
           <Chip
-            label={`${categoryScore.toFixed(0)}%`}
-            color={getScoreColor(categoryScore) as any}
+            label={categoryScore !== null ? `${categoryScore.toFixed(0)}%` : '— %'}
+            color={categoryScore !== null ? (getScoreColor(categoryScore) as any) : 'default'}
+            variant={categoryScore === null ? 'outlined' : 'filled'}
           />
         </Box>
 
-        {results && (
+        {results && categoryScore !== null && (
           <Box sx={{ mb: 2 }}>
             <LinearProgress
               variant="determinate"
               value={categoryScore}
               color={getScoreColor(categoryScore) as any}
             />
+          </Box>
+        )}
+        {results && categoryScore === null && hasAuditedItems === false && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              En attente d'audit
+            </Typography>
           </Box>
         )}
 
@@ -84,7 +99,7 @@ export default function CategoryCard({ category }: CategoryCardProps) {
                 </Box>
               </AccordionSummary>
               <AccordionDetails>
-                <ItemCard item={item} categoryId={category.id} />
+                <ItemCard item={item} categoryId={category.id} categoryItems={category.items} />
               </AccordionDetails>
             </Accordion>
           ))}

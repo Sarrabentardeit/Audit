@@ -1,5 +1,5 @@
 // Service Worker pour le mode hors ligne
-const CACHE_NAME = 'audit-hygiene-v1';
+const CACHE_NAME = 'audit-hygiene-v2'; // Incrémenté pour forcer la mise à jour du cache
 const urlsToCache = [
   '/',
   '/index.html',
@@ -52,14 +52,35 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stratégie Cache First pour les assets statiques
+  // Stratégie Network First pour data_structure.json (toujours vérifier la version en ligne d'abord)
+  if (url.pathname === '/data_structure.json') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Si la requête réussit, mettre à jour le cache et retourner
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseToCache);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // Si la requête échoue (mode hors ligne), utiliser le cache
+          return caches.match(request);
+        })
+    );
+    return;
+  }
+
+  // Stratégie Cache First pour les autres assets statiques
   if (
     url.pathname.endsWith('.js') ||
     url.pathname.endsWith('.css') ||
     url.pathname.endsWith('.png') ||
     url.pathname.endsWith('.jpg') ||
     url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.json') ||
     url.pathname === '/' ||
     url.pathname === '/index.html'
   ) {

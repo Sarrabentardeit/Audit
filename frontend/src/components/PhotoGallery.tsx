@@ -111,3 +111,4 @@ export default function PhotoGallery({ photos, onDelete }: PhotoGalleryProps) {
   );
 }
 
+
