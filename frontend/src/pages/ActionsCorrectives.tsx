@@ -68,39 +68,57 @@ export default function ActionsCorrectives() {
   const initialRows = useMemo(() => {
     if (!currentAudit) return [];
 
-    // Si l'auditeur a déjà enregistré des actions correctives, les utiliser
-    if (currentAudit.correctiveActions && currentAudit.correctiveActions.length > 0) {
-      return currentAudit.correctiveActions;
-    }
-
-    // Sinon, pré-remplir automatiquement avec les observations de l'audit
+    // Générer automatiquement les lignes à partir des observations de l'audit
     const rows: CorrectiveActionRow[] = [];
+    const existingRowsMap = new Map<string, CorrectiveActionRow>();
     
+    // Si l'auditeur a déjà enregistré des actions correctives, les garder en mémoire
+    if (currentAudit.correctiveActions && currentAudit.correctiveActions.length > 0) {
+      currentAudit.correctiveActions.forEach((row) => {
+        existingRowsMap.set(row.id, row);
+      });
+    }
+    
+    // Parcourir toutes les catégories et items pour générer les lignes
     currentAudit.categories.forEach((category) => {
       category.items.forEach((item) => {
-        // Ne prendre que les items qui ont des non-conformités (note < 1.0)
-        const hasNonConformity = item.numberOfNonConformities !== null && item.numberOfNonConformities > 0;
-        
-        if (hasNonConformity && item.observations && item.observations.length > 0) {
+        // Prendre tous les items qui ont des observations (même sans non-conformité)
+        if (item.observations && item.observations.length > 0) {
           item.observations.forEach((obs) => {
             if (obs && obs.text && obs.text.trim()) {
-              // Construire le texte de l'écart : Catégorie - Item - Observation
-              const categoryName = category.name.replace(/^\d+\.\s*/, '');
-              const ecartText = `${categoryName} - ${item.name}\n${obs.text}`;
+              const rowId = `${category.id}-${item.id}-${obs.id}`;
               
-              rows.push({
-                id: `${category.id}-${item.id}-${obs.id}`,
-                ecart: ecartText,
-                actionCorrective: obs.correctiveAction || '',
-                delai: '',
-                quand: '',
-                visa: '',
-                verification: '',
-              });
+              // Si la ligne existe déjà (sauvegardée), utiliser les données sauvegardées
+              // Sinon, créer une nouvelle ligne avec les données de l'audit
+              if (existingRowsMap.has(rowId)) {
+                rows.push(existingRowsMap.get(rowId)!);
+              } else {
+                // Construire le texte de l'écart : Catégorie - Item - Observation
+                const categoryName = category.name.replace(/^\d+\.\s*/, '');
+                const ecartText = `${categoryName} - ${item.name}\n${obs.text}`;
+                
+                rows.push({
+                  id: rowId,
+                  ecart: ecartText,
+                  actionCorrective: obs.correctiveAction || '',
+                  delai: '',
+                  quand: '',
+                  visa: '',
+                  verification: '',
+                });
+              }
             }
           });
         }
       });
+    });
+    
+    // Ajouter les lignes sauvegardées qui ne correspondent à aucune observation actuelle
+    // (pour garder les lignes ajoutées manuellement par l'auditeur)
+    existingRowsMap.forEach((row) => {
+      if (!rows.find((r) => r.id === row.id)) {
+        rows.push(row);
+      }
     });
     
     return rows;
