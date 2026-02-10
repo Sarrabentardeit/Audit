@@ -863,14 +863,29 @@ export async function generatePDFReport(audit: Audit, results: AuditResults): Pr
         const photoSize = Math.min(35, (colWidths.photos - 8) / maxPhotosPerRow); // Taille augmentée (35mm max)
         
         for (let i = 0; i < Math.min(maxPhotosPerRow * 2, item.photos.length); i++) {
-          try {
-            const photoData = item.photos[i];
-            
-            if (!photoData || photoData.trim() === '') {
-              console.warn('Photo vide à l\'index', i);
-              continue;
+          const photoData = item.photos[i];
+          
+          if (!photoData || photoData.trim() === '') {
+            console.warn('Photo vide à l\'index', i);
+            continue;
+          }
+          
+          // Déclarer les variables avant le try pour qu'elles soient accessibles dans le catch
+          let base64Data: string = photoData;
+          let imageFormat: 'JPEG' | 'PNG' = 'JPEG';
+          
+          // Extraire le base64 et déterminer le format avant le traitement
+          if (photoData.startsWith('data:image/png')) {
+            imageFormat = 'PNG';
+          }
+          if (photoData.startsWith('data:image/')) {
+            const base64Index = photoData.indexOf(',');
+            if (base64Index !== -1) {
+              base64Data = photoData.substring(base64Index + 1);
             }
-            
+          }
+          
+          try {
             // Créer une image pour obtenir les dimensions
             const img = new Image();
             
@@ -902,21 +917,6 @@ export async function generatePDFReport(audit: Audit, results: AuditResults): Pr
                   } else {
                     // Image verticale
                     finalWidth = photoSize * aspectRatio;
-                  }
-                  
-                  // Déterminer le format de l'image
-                  let imageFormat: 'JPEG' | 'PNG' = 'JPEG';
-                  if (photoData.startsWith('data:image/png')) {
-                    imageFormat = 'PNG';
-                  }
-                  
-                  // Extraire le base64 pur pour jsPDF
-                  let base64Data = photoData;
-                  if (photoData.startsWith('data:image/')) {
-                    const base64Index = photoData.indexOf(',');
-                    if (base64Index !== -1) {
-                      base64Data = photoData.substring(base64Index + 1);
-                    }
                   }
                   
                   // Ajouter un petit cadre autour de la photo
