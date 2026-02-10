@@ -107,37 +107,43 @@ function formatNumber(value: number, decimals: number = 2): string {
  * @param score Note en pourcentage (0-100)
  */
 function drawScoreBadge(pdf: jsPDF, x: number, y: number, score: number): void {
-  const radius = 4; // Rayon de la pastille
+  const radius = 5; // Rayon de la pastille (augmenté pour plus de visibilité)
   
   if (score < 80) {
     // Rouge avec croix
     pdf.setFillColor(220, 53, 69); // Rouge
     pdf.circle(x, y, radius, 'F');
     pdf.setDrawColor(255, 255, 255);
-    pdf.setLineWidth(0.5);
-    // Dessiner une croix
-    pdf.line(x - 2, y - 2, x + 2, y + 2);
-    pdf.line(x + 2, y - 2, x - 2, y + 2);
+    pdf.setLineWidth(1);
+    // Dessiner une croix plus épaisse
+    pdf.line(x - 2.5, y - 2.5, x + 2.5, y + 2.5);
+    pdf.line(x + 2.5, y - 2.5, x - 2.5, y + 2.5);
   } else if (score >= 80 && score < 90) {
     // Orange avec point d'exclamation
     pdf.setFillColor(255, 152, 0); // Orange
     pdf.circle(x, y, radius, 'F');
     pdf.setDrawColor(255, 255, 255);
-    pdf.setLineWidth(0.5);
-    // Dessiner un point d'exclamation
-    pdf.setFontSize(6);
+    pdf.setLineWidth(1);
+    // Dessiner un point d'exclamation plus visible
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(255, 255, 255);
-    pdf.text('!', x, y + 1.5, { align: 'center' });
+    pdf.text('!', x, y + 2, { align: 'center' });
   } else {
     // Vert avec encoche "validé"
     pdf.setFillColor(76, 175, 80); // Vert
     pdf.circle(x, y, radius, 'F');
     pdf.setDrawColor(255, 255, 255);
-    pdf.setLineWidth(0.5);
-    // Dessiner une encoche (checkmark)
-    pdf.line(x - 1.5, y, x - 0.5, y + 1.5);
-    pdf.line(x - 0.5, y + 1.5, x + 2, y - 1);
+    pdf.setLineWidth(1.5);
+    // Dessiner une encoche (checkmark) plus visible
+    pdf.line(x - 2, y, x - 0.5, y + 2);
+    pdf.line(x - 0.5, y + 2, x + 2.5, y - 1.5);
   }
+  
+  // Réinitialiser les paramètres de texte
+  pdf.setFontSize(10);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(0, 0, 0);
 }
 
 /**
@@ -851,94 +857,101 @@ export async function generatePDFReport(audit: Audit, results: AuditResults): Pr
       pdf.rect(currentX, yPosition, colWidths.photos, rowHeight);
       if (item.photos.length > 0) {
         // Charger et ajouter les photos
-        let photoX = currentX + 1;
-        let photoY = yPosition + 1;
-        const maxPhotosPerRow = 3;
-        const photoSize = Math.min(20, (colWidths.photos - 4) / maxPhotosPerRow);
+        let photoX = currentX + 2;
+        let photoY = yPosition + 2;
+        const maxPhotosPerRow = 2; // Réduire à 2 photos par ligne pour plus de visibilité
+        const photoSize = Math.min(25, (colWidths.photos - 6) / maxPhotosPerRow); // Taille plus grande
         
-        for (let i = 0; i < Math.min(maxPhotosPerRow, item.photos.length); i++) {
+        for (let i = 0; i < Math.min(maxPhotosPerRow * 2, item.photos.length); i++) {
           try {
             const photoData = item.photos[i];
             
-            // Extraire le base64 pur si c'est un data URL
-            let base64Data = photoData;
-            if (photoData.startsWith('data:image/')) {
-              // Extraire la partie base64 après la virgule
-              const base64Index = photoData.indexOf(',');
-              if (base64Index !== -1) {
-                base64Data = photoData.substring(base64Index + 1);
-              }
-            }
-            
+            // Créer une image pour obtenir les dimensions
             const img = new Image();
             
-            await new Promise<void>((resolve, reject) => {
+            await new Promise<void>((resolve) => {
               const timeout = setTimeout(() => {
-                reject(new Error('Timeout loading image'));
-              }, 5000);
+                console.warn('Timeout chargement photo', i);
+                resolve();
+              }, 10000);
               
               const processImage = () => {
                 clearTimeout(timeout);
                 try {
+                  if (!img.width || !img.height) {
+                    console.warn('Image invalide:', i);
+                    resolve();
+                    return;
+                  }
+                  
                   // Redimensionner l'image pour qu'elle rentre dans la cellule
                   let finalWidth = photoSize;
                   let finalHeight = photoSize;
                   
-                  if (img.width > 0 && img.height > 0) {
-                    if (img.width > img.height) {
-                      finalHeight = (photoSize * img.height) / img.width;
-                    } else {
-                      finalWidth = (photoSize * img.width) / img.height;
+                  const aspectRatio = img.width / img.height;
+                  if (aspectRatio > 1) {
+                    // Image horizontale
+                    finalHeight = photoSize / aspectRatio;
+                  } else {
+                    // Image verticale
+                    finalWidth = photoSize * aspectRatio;
+                  }
+                  
+                  // Déterminer le format de l'image
+                  let imageFormat: 'JPEG' | 'PNG' = 'JPEG';
+                  if (photoData.startsWith('data:image/png')) {
+                    imageFormat = 'PNG';
+                  }
+                  
+                  // Extraire le base64 pur pour jsPDF
+                  let base64Data = photoData;
+                  if (photoData.startsWith('data:image/')) {
+                    const base64Index = photoData.indexOf(',');
+                    if (base64Index !== -1) {
+                      base64Data = photoData.substring(base64Index + 1);
                     }
                   }
                   
-                  // Utiliser le base64 pur pour jsPDF
-                  pdf.addImage(base64Data, 'JPEG', photoX, photoY, finalWidth, finalHeight);
+                  // Ajouter l'image au PDF
+                  pdf.addImage(base64Data, imageFormat, photoX, photoY, finalWidth, finalHeight);
                   
-                  photoX += photoSize + 1;
+                  photoX += photoSize + 2;
                   if ((i + 1) % maxPhotosPerRow === 0) {
-                    photoX = currentX + 1;
-                    photoY += photoSize + 1;
+                    photoX = currentX + 2;
+                    photoY += photoSize + 2;
                   }
                   resolve();
                 } catch (error) {
-                  console.error('Erreur lors de l\'ajout de l\'image au PDF:', error);
-                  pdf.setFontSize(6);
-                  pdf.text('📷', photoX, photoY + 3);
-                  photoX += photoSize + 1;
+                  console.error('Erreur lors de l\'ajout de l\'image au PDF:', error, i);
                   resolve();
                 }
               };
               
               img.onload = processImage;
-              img.onerror = () => {
+              img.onerror = (error) => {
                 clearTimeout(timeout);
-                console.error('Erreur lors du chargement de l\'image');
-                pdf.setFontSize(6);
-                pdf.text('📷', photoX, photoY + 3);
-                photoX += photoSize + 1;
+                console.error('Erreur lors du chargement de l\'image:', error, i);
                 resolve();
               };
               
-              // Utiliser le data URL complet pour charger l'image
+              // Charger l'image
+              img.crossOrigin = 'anonymous';
               img.src = photoData;
               
-              // Si l'image est déjà chargée (depuis le cache), onload ne se déclenchera pas
+              // Si l'image est déjà chargée
               if (img.complete && img.naturalWidth > 0) {
                 processImage();
               }
             });
           } catch (error) {
-            console.error('Erreur lors du traitement de la photo:', error);
-            pdf.setFontSize(6);
-            pdf.text('📷', photoX, photoY + 3);
-            photoX += photoSize + 1;
+            console.error('Erreur lors du traitement de la photo:', error, i);
           }
         }
         
-        if (item.photos.length > maxPhotosPerRow) {
+        if (item.photos.length > maxPhotosPerRow * 2) {
           pdf.setFontSize(6);
-          pdf.text(`+${item.photos.length - maxPhotosPerRow}`, photoX, photoY);
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(`+${item.photos.length - maxPhotosPerRow * 2}`, photoX, photoY);
         }
       } else {
         pdf.setTextColor(128, 128, 128);
