@@ -669,9 +669,9 @@ export async function generatePDFReport(audit: Audit, results: AuditResults): Pr
       no: 8,          // NO (numéro)
       star: 8,        // * (note brute)
       note: 12,       // Note (contribution %)
-      comments: (availableWidth - 8 - 8 - 12 - 30) * 0.45,  // Commentaires
-      actions: (availableWidth - 8 - 8 - 12 - 30) * 0.45,  // Actions
-      photos: 30      // Photos
+      comments: (availableWidth - 8 - 8 - 12 - 45) * 0.45,  // Commentaires
+      actions: (availableWidth - 8 - 8 - 12 - 45) * 0.45,  // Actions
+      photos: 45      // Photos (augmenté pour plus de visibilité)
     };
 
     // Titre de la catégorie avec score
@@ -857,32 +857,39 @@ export async function generatePDFReport(audit: Audit, results: AuditResults): Pr
       pdf.rect(currentX, yPosition, colWidths.photos, rowHeight);
       if (item.photos.length > 0) {
         // Charger et ajouter les photos
-        let photoX = currentX + 2;
-        let photoY = yPosition + 2;
-        const maxPhotosPerRow = 2; // Réduire à 2 photos par ligne pour plus de visibilité
-        const photoSize = Math.min(25, (colWidths.photos - 6) / maxPhotosPerRow); // Taille plus grande
+        let photoX = currentX + 3;
+        let photoY = yPosition + 3;
+        const maxPhotosPerRow = 2; // 2 photos par ligne pour plus de visibilité
+        const photoSize = Math.min(35, (colWidths.photos - 8) / maxPhotosPerRow); // Taille augmentée (35mm max)
         
         for (let i = 0; i < Math.min(maxPhotosPerRow * 2, item.photos.length); i++) {
           try {
             const photoData = item.photos[i];
+            
+            if (!photoData || photoData.trim() === '') {
+              console.warn('Photo vide à l\'index', i);
+              continue;
+            }
             
             // Créer une image pour obtenir les dimensions
             const img = new Image();
             
             await new Promise<void>((resolve) => {
               const timeout = setTimeout(() => {
-                console.warn('Timeout chargement photo', i);
+                console.warn('Timeout chargement photo', i, 'pour item', item.name);
                 resolve();
-              }, 10000);
+              }, 15000); // Timeout augmenté à 15 secondes
               
               const processImage = () => {
                 clearTimeout(timeout);
                 try {
-                  if (!img.width || !img.height) {
-                    console.warn('Image invalide:', i);
+                  if (!img.width || !img.height || img.naturalWidth === 0 || img.naturalHeight === 0) {
+                    console.warn('Image invalide:', i, 'dimensions:', img.width, 'x', img.height);
                     resolve();
                     return;
                   }
+                  
+                  console.log('Traitement photo', i, 'dimensions:', img.width, 'x', img.height);
                   
                   // Redimensionner l'image pour qu'elle rentre dans la cellule
                   let finalWidth = photoSize;
@@ -912,17 +919,28 @@ export async function generatePDFReport(audit: Audit, results: AuditResults): Pr
                     }
                   }
                   
+                  // Ajouter un petit cadre autour de la photo
+                  pdf.setDrawColor(200, 200, 200);
+                  pdf.setLineWidth(0.1);
+                  pdf.rect(photoX - 0.5, photoY - 0.5, finalWidth + 1, finalHeight + 1);
+                  
                   // Ajouter l'image au PDF
+                  console.log('Ajout photo au PDF:', i, 'format:', imageFormat, 'taille:', finalWidth, 'x', finalHeight, 'position:', photoX, photoY);
                   pdf.addImage(base64Data, imageFormat, photoX, photoY, finalWidth, finalHeight);
                   
-                  photoX += photoSize + 2;
+                  photoX += photoSize + 3;
                   if ((i + 1) % maxPhotosPerRow === 0) {
-                    photoX = currentX + 2;
-                    photoY += photoSize + 2;
+                    photoX = currentX + 3;
+                    photoY += photoSize + 3;
                   }
+                  console.log('Photo', i, 'ajoutée avec succès');
                   resolve();
                 } catch (error) {
-                  console.error('Erreur lors de l\'ajout de l\'image au PDF:', error, i);
+                  console.error('Erreur lors de l\'ajout de l\'image au PDF:', error, i, 'base64 length:', base64Data?.length);
+                  // Afficher un indicateur visuel en cas d'erreur
+                  pdf.setFontSize(8);
+                  pdf.setTextColor(255, 0, 0);
+                  pdf.text('Erreur', photoX, photoY + 5);
                   resolve();
                 }
               };
