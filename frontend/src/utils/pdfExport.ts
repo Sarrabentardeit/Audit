@@ -726,18 +726,30 @@ async function generateAuditDetailPages(pdf: jsPDF, audit: Audit, results: Audit
     pdf.setLineWidth(0.5);
     pdf.rect(margin, yPosition, availableWidth, categoryHeaderHeight, 'FD');
 
-    // Titre de la catégorie (gauche, en bleu)
+    // Titre de la catégorie (gauche, en bleu) - bien espacé
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(25, 118, 210);
-    pdf.text(`${catIndex + 1}. ${categoryTitle.toUpperCase()}`, margin + 3, yPosition + categoryHeaderHeight / 2 + 2);
+    const categoryTitleText = `${catIndex + 1}. ${categoryTitle.toUpperCase()}`;
+    const titleY = yPosition + categoryHeaderHeight / 2 + 2;
+    pdf.text(categoryTitleText, margin + 3, titleY);
 
-    // Score de la catégorie (droite, aligné avec la colonne Note)
+    // Score de la catégorie (droite, aligné avec la colonne Note) - bien séparé du titre
     if (categoryScoreText) {
       pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(0, 0, 0);
+      // Positionner le score à droite, aligné avec la colonne Note, avec espace suffisant
       const scoreX = margin + colWidths.itemName + colWidths.ko + colWidths.star + colWidths.note / 2;
-      pdf.text(categoryScoreText, scoreX, yPosition + categoryHeaderHeight / 2 + 2, { align: 'center' });
+      // Vérifier qu'il n'y a pas de chevauchement avec le titre
+      const titleWidth = pdf.getTextWidth(categoryTitleText);
+      const minSpace = 10; // Espace minimum entre titre et score
+      if (scoreX - (margin + 3 + titleWidth) < minSpace) {
+        // Si pas assez d'espace, mettre le score sur une nouvelle ligne ou à droite
+        pdf.text(categoryScoreText, pageWidth - margin - 5, titleY, { align: 'right' });
+      } else {
+        pdf.text(categoryScoreText, scoreX, titleY, { align: 'center' });
+      }
     }
 
     yPosition += categoryHeaderHeight + 2;
@@ -844,22 +856,29 @@ async function generateAuditDetailPages(pdf: jsPDF, audit: Audit, results: Audit
 
       // ---- Colonne KO (barre rouge) ----
       pdf.rect(x, yPosition, colWidths.ko, rowHeight);
-      // Barre rouge verticale à gauche (indicateur visuel comme dans le PDF de référence)
-      // Toujours afficher la barre rouge si c'est un KO ou si la note est faible
+      
+      // Barre rouge qui remplit TOUTE la colonne si KO (comme dans les images de référence)
       if (isKO || (rawNote !== null && rawNote !== undefined && rawNote !== 1 && rawNote !== 0.7)) {
+        // Remplir toute la colonne en rouge
         pdf.setFillColor(220, 53, 69);
-        pdf.rect(x, yPosition, 2, rowHeight, 'F');
+        pdf.rect(x, yPosition, colWidths.ko, rowHeight, 'F');
         
-        // Afficher "1" si c'est un vrai KO (item.ko > 0)
+        // Afficher "1" en blanc si c'est un vrai KO (item.ko > 0)
         if (item.ko > 0) {
-          pdf.setFontSize(6);
+          pdf.setFontSize(7);
           pdf.setFont('helvetica', 'bold');
-          pdf.setTextColor(220, 53, 69);
-          pdf.text('1', x + colWidths.ko / 2 + 1, yPosition + rowHeight / 2 + 1, { align: 'center' });
+          pdf.setTextColor(255, 255, 255);
+          pdf.text('1', x + colWidths.ko / 2, yPosition + rowHeight / 2 + 1, { align: 'center' });
         }
+      } else {
+        // Si pas de KO, juste la bordure
+        pdf.setDrawColor(0, 0, 0);
+        pdf.rect(x, yPosition, colWidths.ko, rowHeight);
       }
-      // Bordure de la cellule
+      
+      // Toujours dessiner la bordure
       pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.5);
       pdf.rect(x, yPosition, colWidths.ko, rowHeight);
       x += colWidths.ko;
 
@@ -1007,82 +1026,82 @@ async function generateAuditDetailPages(pdf: jsPDF, audit: Audit, results: Audit
   const lastPage = pdf.getNumberOfPages();
   pdf.setPage(lastPage);
   
-  // Calculer la position Y sur cette page
-  // On va placer le footer en bas de la dernière page utilisée
-  let footerY = pageHeight - 25;
+  // Calculer la position Y sur cette page - placer le footer en bas
+  let footerY = pageHeight - 30;
   
   // Si la dernière page est trop remplie, ajouter une nouvelle page pour le footer
-  if (footerY < 50) {
+  if (footerY < 60) {
     pdf.addPage();
-    footerY = pageHeight - 25;
+    footerY = pageHeight - 30;
   }
 
-  // Note totale
-  pdf.setFontSize(9);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(0, 0, 0);
+  // Note totale - affichage raffiné comme dans les images de référence
   const totalScoreValue = results.totalScore !== null ? formatNumber(results.totalScore, 2) : '—';
 
-  // Tableau de note totale en bas
+  // Tableau de note totale en bas - mieux organisé
   const footerTableWidth = availableWidth;
-  const footerRowHeight = 12;
+  const footerRowHeight = 14; // Hauteur augmentée pour meilleure lisibilité
 
-  // Cellule "NOTE TOTALE obtenue..."
   pdf.setDrawColor(0, 0, 0);
   pdf.setLineWidth(0.5);
 
-  const col1W = footerTableWidth * 0.30;
-  const col2W = footerTableWidth * 0.10;
-  const col3W = footerTableWidth * 0.15;
-  const col4W = footerTableWidth * 0.10;
-  const col5W = footerTableWidth * 0.35;
+  // Répartition des colonnes optimisée
+  const col1W = footerTableWidth * 0.35; // Plus large pour le texte
+  const col2W = footerTableWidth * 0.12; // Score
+  const col3W = footerTableWidth * 0.12; // "nombre de KO"
+  const col4W = footerTableWidth * 0.10; // Nombre KO
+  const col5W = footerTableWidth * 0.31; // Légende
 
-  // Ligne du total
+  // Ligne du total - texte bien formaté
   pdf.rect(margin, footerY, col1W, footerRowHeight);
-  pdf.setFontSize(7);
+  pdf.setFontSize(8);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(0, 0, 0);
   const totalLabel = pdf.splitTextToSize('NOTE TOTALE obtenue pour l\'ensemble des Bonnes Pratiques d\'Hygiène :', col1W - 4);
   totalLabel.forEach((line: string, idx: number) => {
-    pdf.text(line, margin + 2, footerY + 3 + (idx * 3));
+    pdf.text(line, margin + 2, footerY + 4 + (idx * 3.5));
   });
 
-  // Score avec pastille
+  // Score avec pastille - bien positionné
   pdf.rect(margin + col1W, footerY, col2W, footerRowHeight);
-  pdf.setFontSize(9);
+  pdf.setFontSize(10);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(0, 0, 0);
   const scoreX = margin + col1W + col2W / 2;
-  pdf.text(`${totalScoreValue}%`, scoreX, footerY + footerRowHeight / 2 + 2, { align: 'center' });
+  const scoreY = footerY + footerRowHeight / 2 + 2;
   
-  // Pastille de score total à côté du score
+  // Pastille de score total AVANT le texte (comme dans les images de référence)
   if (results.totalScore !== null) {
-    drawScoreBadge(pdf, scoreX - 8, footerY + footerRowHeight / 2 - 1, results.totalScore, 4);
+    drawScoreBadge(pdf, scoreX - 12, scoreY - 1, results.totalScore, 5);
   }
+  
+  pdf.text(`${totalScoreValue}%`, scoreX, scoreY, { align: 'center' });
 
   // "nombre de KO :"
   pdf.rect(margin + col1W + col2W, footerY, col3W, footerRowHeight);
   pdf.setFontSize(7);
   pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(0, 0, 0);
   pdf.text('nombre de KO :', margin + col1W + col2W + col3W / 2, footerY + footerRowHeight / 2 + 1, { align: 'center' });
 
-  // Nombre KO (fond rouge)
+  // Nombre KO (fond rouge) - bien visible
   pdf.rect(margin + col1W + col2W + col3W, footerY, col4W, footerRowHeight);
   pdf.setFillColor(220, 53, 69);
   pdf.rect(margin + col1W + col2W + col3W, footerY, col4W, footerRowHeight, 'FD');
-  pdf.setFontSize(10);
+  pdf.setFontSize(11);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(255, 255, 255);
   pdf.text(`${results.numberOfKO}`, margin + col1W + col2W + col3W + col4W / 2, footerY + footerRowHeight / 2 + 2, { align: 'center' });
 
-  // Légende
+  // Légende - bien formatée
   pdf.rect(margin + col1W + col2W + col3W + col4W, footerY, col5W, footerRowHeight);
-  pdf.setFontSize(6);
+  pdf.setFontSize(7);
   pdf.setFont('helvetica', 'normal');
   pdf.setTextColor(0, 0, 0);
-  const legendLines = pdf.splitTextToSize('* 1 : conforme ; 0,7 : non-conformité mineur ; 0,3 : non-conformité moyenne ; 0 : non-conformité majeur', col5W - 4);
+  const legendText = '* 1 : conforme ; 0,7 : non-conformité mineur ; 0,3 : non-conformité moyenne ; 0 : non-conformité majeur';
+  const legendLines = pdf.splitTextToSize(legendText, col5W - 4);
   legendLines.forEach((line: string, idx: number) => {
-    pdf.text(line, margin + col1W + col2W + col3W + col4W + 2, footerY + 3.5 + (idx * 2.5));
+    pdf.text(line, margin + col1W + col2W + col3W + col4W + 2, footerY + 4 + (idx * 3));
   });
 }
 
