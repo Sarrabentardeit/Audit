@@ -18,7 +18,6 @@ const RADAR_CATEGORIES = [
  * Normaliser le nom de catégorie pour le mapping
  */
 function normalizeCategoryName(name: string): string {
-  // Retirer le numéro et les espaces en début/fin, remplacer les accents
   const normalized = name
     .replace(/^\d+\.\s*/, '')
     .trim()
@@ -27,7 +26,7 @@ function normalizeCategoryName(name: string): string {
     .replace(/È/g, 'E')
     .replace(/Ê/g, 'E')
     .replace(/À/g, 'A')
-    .replace(/\s+/g, ' '); // Normaliser les espaces multiples
+    .replace(/\s+/g, ' ');
   return normalized;
 }
 
@@ -35,7 +34,6 @@ function normalizeCategoryName(name: string): string {
  * Mapping direct des noms de catégories normalisés vers les indices du radar
  */
 function getRadarIndexForCategory(normalizedName: string): number {
-  // Mapping exact après normalisation
   if (normalizedName.includes('LOCAUX ET EQUIPEMENTS')) return 0;
   if (normalizedName.includes('MAITRISE DES TEMPERATURES')) return 1;
   if (normalizedName.includes('MAITRISE DES MATIERES')) return 2;
@@ -53,42 +51,19 @@ function mapCategoriesToRadar(audit: Audit, results: AuditResults): RadarData[] 
     category: RADAR_CATEGORIES[index],
     score: 0,
   }));
-  
-  console.log('[Radar] Tous les scores disponibles:', results.categoryScores);
-  console.log('[Radar] Nombre de catégories dans l\'audit:', audit.categories.length);
-  
-  // Parcourir toutes les catégories de l'audit
+
   audit.categories.forEach((auditCategory) => {
     const normalized = normalizeCategoryName(auditCategory.name);
     const categoryScore = results.categoryScores[auditCategory.id];
-    
-    console.log(`[Radar] Catégorie: "${auditCategory.name}" -> Normalisé: "${normalized}"`);
-    console.log(`[Radar] ID catégorie: ${auditCategory.id}`);
-    console.log(`[Radar] Score dans results.categoryScores:`, categoryScore);
-    
-    // Trouver l'index correspondant dans le radar
     const radarIndex = getRadarIndexForCategory(normalized);
-    
+
     if (radarIndex >= 0) {
-      console.log(`[Radar] Mapping trouvé: index ${radarIndex} pour "${RADAR_CATEGORIES[radarIndex]}"`);
-      
-      // Si le score existe et n'est pas null, l'assigner
       if (categoryScore !== null && categoryScore !== undefined && typeof categoryScore === 'number') {
         radarData[radarIndex].score = categoryScore;
-        console.log(`[Radar] ✓ Score assigné: ${categoryScore}% à "${RADAR_CATEGORIES[radarIndex]}"`);
-      } else {
-        console.log(`[Radar] ✗ Score null/undefined/invalide (${categoryScore}), garde 0`);
       }
-    } else {
-      console.log(`[Radar] ✗ Pas de mapping trouvé pour "${normalized}"`);
     }
   });
-  
-  console.log('[Radar] Données finales pour le graphique:');
-  radarData.forEach((d, idx) => {
-    console.log(`  ${idx + 1}. ${d.category}: ${d.score}%`);
-  });
-  
+
   return radarData;
 }
 
@@ -101,65 +76,61 @@ function formatNumber(value: number, decimals: number = 2): string {
 
 /**
  * Dessiner une pastille de couleur selon la note
- * @param pdf Instance jsPDF
- * @param x Position X
- * @param y Position Y
- * @param score Note en pourcentage (0-100)
+ * < 80% = Rouge avec croix
+ * 80% - 90% = Orange avec point d'exclamation
+ * >= 90% = Vert avec encoche "validé"
  */
-function drawScoreBadge(pdf: jsPDF, x: number, y: number, score: number): void {
-  const radius = 5; // Rayon de la pastille (augmenté pour plus de visibilité)
-  
+function drawScoreBadge(pdf: jsPDF, x: number, y: number, score: number, size: number = 5): void {
+  const radius = size;
+
   if (score < 80) {
     // Rouge avec croix
-    pdf.setFillColor(220, 53, 69); // Rouge
+    pdf.setFillColor(220, 53, 69);
     pdf.circle(x, y, radius, 'F');
     pdf.setDrawColor(255, 255, 255);
-    pdf.setLineWidth(1);
-    // Dessiner une croix plus épaisse
-    pdf.line(x - 2.5, y - 2.5, x + 2.5, y + 2.5);
-    pdf.line(x + 2.5, y - 2.5, x - 2.5, y + 2.5);
+    pdf.setLineWidth(1.2);
+    const offset = radius * 0.5;
+    pdf.line(x - offset, y - offset, x + offset, y + offset);
+    pdf.line(x + offset, y - offset, x - offset, y + offset);
   } else if (score >= 80 && score < 90) {
     // Orange avec point d'exclamation
-    pdf.setFillColor(255, 152, 0); // Orange
+    pdf.setFillColor(255, 152, 0);
     pdf.circle(x, y, radius, 'F');
-    pdf.setDrawColor(255, 255, 255);
-    pdf.setLineWidth(1);
-    // Dessiner un point d'exclamation plus visible
-    pdf.setFontSize(8);
+    pdf.setFontSize(Math.max(8, size * 1.6));
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(255, 255, 255);
-    pdf.text('!', x, y + 2, { align: 'center' });
+    pdf.text('!', x, y + size * 0.4, { align: 'center' });
   } else {
     // Vert avec encoche "validé"
-    pdf.setFillColor(76, 175, 80); // Vert
+    pdf.setFillColor(76, 175, 80);
     pdf.circle(x, y, radius, 'F');
     pdf.setDrawColor(255, 255, 255);
     pdf.setLineWidth(1.5);
-    // Dessiner une encoche (checkmark) plus visible
-    pdf.line(x - 2, y, x - 0.5, y + 2);
-    pdf.line(x - 0.5, y + 2, x + 2.5, y - 1.5);
+    const s = radius * 0.5;
+    pdf.line(x - s, y, x - s * 0.2, y + s * 0.8);
+    pdf.line(x - s * 0.2, y + s * 0.8, x + s, y - s * 0.6);
   }
-  
-  // Réinitialiser les paramètres de texte
+
+  // Réinitialiser
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'normal');
   pdf.setTextColor(0, 0, 0);
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.5);
 }
 
 /**
  * Calculer la contribution en % d'un item au score de sa catégorie
- * Contribution = (note × pondération / somme des pondérations) × 100
  */
 function calculateItemContribution(item: AuditItem, categoryItems: AuditItem[]): number {
   if (item.note === undefined || item.note === null) return 0;
-  
-  // Calculer la somme des pondérations de tous les items audités de la catégorie
+
   const totalPonderation = categoryItems
     .filter(i => i.isAudited && i.numberOfNonConformities !== null)
     .reduce((sum, i) => sum + i.ponderation, 0);
-  
+
   if (totalPonderation === 0) return 0;
-  
+
   return Math.round((item.note * item.ponderation / totalPonderation) * 100);
 }
 
@@ -176,15 +147,14 @@ function formatRawNote(note: number | null | undefined): string {
 }
 
 /**
- * Générer la page avec le graphique radar
+ * Dessiner l'en-tête commun à toutes les pages
  */
-function generateRadarChartPage(pdf: jsPDF, audit: Audit, results: AuditResults): void {
+function drawPageHeader(pdf: jsPDF, title: string, headerMargin: number = 15): number {
   const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 15;
+  const margin = headerMargin;
   let yPosition = margin;
 
-  // En-tête avec logo, titre et contact
+  // Logo Alexann à gauche
   pdf.setFontSize(14);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(25, 118, 210);
@@ -195,37 +165,118 @@ function generateRadarChartPage(pdf: jsPDF, audit: Audit, results: AuditResults)
   pdf.text('Hygiène et qualité agroalimentaire', margin, yPosition + 5);
 
   // Titre au centre
-  pdf.setFontSize(12);
+  pdf.setFontSize(11);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(0, 0, 0);
-  pdf.text('CARTOGRAPHIE RADAR LES BONNES PRATIQUES D\'HYGIENE', pageWidth / 2, yPosition + 3, { align: 'center' });
+  pdf.text(title, pageWidth / 2, yPosition + 3, { align: 'center' });
 
   // Contact à droite
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
-  const contactLines = [
-    'Anne SUQUET',
-    'anne@alexann.fr',
-    '06 46 45 67 33'
-  ];
+  const contactLines = ['Anne SUQUET', 'anne@alexann.fr', '06 46 45 67 33'];
   contactLines.forEach((line, idx) => {
     pdf.text(line, pageWidth - margin, yPosition + (idx * 4), { align: 'right' });
   });
 
-  yPosition += 20;
+  return yPosition + 18;
+}
+
+/**
+ * Charger une image et retourner ses dimensions
+ */
+function loadImage(photoData: string): Promise<{ width: number; height: number; data: string; format: 'JPEG' | 'PNG' } | null> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      console.warn('Timeout chargement photo');
+      resolve(null);
+    }, 15000);
+
+    try {
+      const img = new Image();
+
+      const processImage = () => {
+        clearTimeout(timeout);
+        try {
+          if (!img.width || !img.height) {
+            resolve(null);
+            return;
+          }
+
+          let imageFormat: 'JPEG' | 'PNG' = 'JPEG';
+          if (photoData.startsWith('data:image/png')) {
+            imageFormat = 'PNG';
+          }
+
+          // Extraire le base64 pur
+          let base64Data = photoData;
+          if (photoData.startsWith('data:image/')) {
+            const base64Index = photoData.indexOf(',');
+            if (base64Index !== -1) {
+              base64Data = photoData.substring(base64Index + 1);
+            }
+          }
+
+          resolve({
+            width: img.width,
+            height: img.height,
+            data: base64Data,
+            format: imageFormat,
+          });
+        } catch (error) {
+          console.error('Erreur traitement image:', error);
+          resolve(null);
+        }
+      };
+
+      img.onload = processImage;
+      img.onerror = () => {
+        clearTimeout(timeout);
+        console.error('Erreur chargement image');
+        resolve(null);
+      };
+
+      img.crossOrigin = 'anonymous';
+      img.src = photoData;
+
+      if (img.complete && img.naturalWidth > 0) {
+        processImage();
+      }
+    } catch (error) {
+      clearTimeout(timeout);
+      resolve(null);
+    }
+  });
+}
+
+// ========================================================================
+// PAGE 1 : CARTOGRAPHIE RADAR
+// ========================================================================
+function generateRadarChartPage(pdf: jsPDF, audit: Audit, results: AuditResults): void {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 15;
+
+  let yPosition = drawPageHeader(pdf, 'CARTOGRAPHIE RADAR\nLES BONNES PRATIQUES D\'HYGIENE');
+
+  yPosition += 5;
 
   // Sous-titre
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'bold');
   pdf.text('CARTOGRAPHIE RADAR DES "BONNES PRATIQUES HYGIENIQUES"', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 6;
+  yPosition += 8;
 
   // Informations de l'audit
   pdf.setFontSize(9);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text(`Adresse :`, margin, yPosition);
   pdf.setFont('helvetica', 'normal');
-  pdf.text(`Adresse : ${audit.adresse}`, margin, yPosition);
+  pdf.text(`${audit.adresse}`, margin + 22, yPosition);
   yPosition += 5;
-  pdf.text(`Date de l'exécution : ${new Date(audit.dateExecution).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, margin, yPosition);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text(`Date de l'exécution :`, margin, yPosition);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(`${new Date(audit.dateExecution).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, margin + 42, yPosition);
   yPosition += 15;
 
   // Préparer les données du radar
@@ -233,49 +284,41 @@ function generateRadarChartPage(pdf: jsPDF, audit: Audit, results: AuditResults)
 
   // Dimensions du graphique radar
   const chartCenterX = pageWidth / 2;
-  const chartCenterY = yPosition + 50; // Centre du graphique (ajusté pour être plus visible)
-  const chartRadius = 40; // Rayon maximum (100%)
+  const chartCenterY = yPosition + 55;
+  const chartRadius = 45;
   const numCategories = 6;
   const angleStep = (2 * Math.PI) / numCategories;
 
-  // Dessiner les cercles concentriques (hexagones)
+  // Dessiner les hexagones concentriques (niveaux 25%, 50%, 75%, 100%)
   pdf.setDrawColor(180, 180, 180);
-  pdf.setLineWidth(0.5);
-  for (let level = 1; level <= 4; level++) {
-    const radius = (chartRadius * level) / 4;
+  pdf.setLineWidth(0.3);
+  const levels = [25, 50, 75, 100];
+  for (const level of levels) {
+    const radius = (chartRadius * level) / 100;
     const points: number[][] = [];
     for (let i = 0; i < numCategories; i++) {
-      const angle = (i * angleStep) - (Math.PI / 2); // Commencer en haut
-      const x = chartCenterX + radius * Math.cos(angle);
-      const y = chartCenterY + radius * Math.sin(angle);
-      points.push([x, y]);
+      const angle = (i * angleStep) - (Math.PI / 2);
+      points.push([
+        chartCenterX + radius * Math.cos(angle),
+        chartCenterY + radius * Math.sin(angle)
+      ]);
     }
-    // Fermer l'hexagone
     points.push(points[0]);
-    
-    // Dessiner l'hexagone
     for (let i = 0; i < points.length - 1; i++) {
       pdf.line(points[i][0], points[i][1], points[i + 1][0], points[i + 1][1]);
     }
-    
-    // Labels des pourcentages sur chaque axe (pas seulement en haut)
-    pdf.setFontSize(6);
-    pdf.setTextColor(120, 120, 120);
-    for (let i = 0; i < numCategories; i++) {
-      const angle = (i * angleStep) - (Math.PI / 2);
-      const labelRadius = radius + 2;
-      const labelX = chartCenterX + labelRadius * Math.cos(angle);
-      const labelY = chartCenterY + labelRadius * Math.sin(angle);
-      if (level === 4) { // Afficher le label seulement sur le cercle extérieur
-        pdf.text(`${level * 25}%`, labelX, labelY, { align: 'center' });
-      }
-    }
   }
 
-  // Label 0% au centre
+  // Labels de pourcentage sur l'axe vertical (en haut)
   pdf.setFontSize(7);
   pdf.setTextColor(100, 100, 100);
-  pdf.text('0%', chartCenterX, chartCenterY, { align: 'center' });
+  levels.forEach((level) => {
+    const radius = (chartRadius * level) / 100;
+    const labelX = chartCenterX + 2;
+    const labelY = chartCenterY - radius - 1;
+    pdf.text(`${level}%`, labelX, labelY);
+  });
+  pdf.text('0%', chartCenterX + 2, chartCenterY + 3);
 
   // Dessiner les axes
   pdf.setDrawColor(150, 150, 150);
@@ -287,31 +330,35 @@ function generateRadarChartPage(pdf: jsPDF, audit: Audit, results: AuditResults)
     pdf.line(chartCenterX, chartCenterY, x, y);
   }
 
-  // Dessiner le polygone des données
+  // Dessiner le polygone des données (rempli avec transparence)
   const dataPoints: number[][] = [];
   radarData.forEach((data, index) => {
     const angle = (index * angleStep) - (Math.PI / 2);
     const radius = (chartRadius * data.score) / 100;
-    const x = chartCenterX + radius * Math.cos(angle);
-    const y = chartCenterY + radius * Math.sin(angle);
-    dataPoints.push([x, y]);
+    dataPoints.push([
+      chartCenterX + radius * Math.cos(angle),
+      chartCenterY + radius * Math.sin(angle)
+    ]);
   });
-  
-  // Dessiner le polygone rempli (ligne épaisse bleue)
+
   if (dataPoints.length > 2) {
-    // Dessiner les lignes du polygone avec une ligne plus épaisse
+    // Remplissage semi-transparent bleu
+    pdf.setFillColor(25, 118, 210);
+    pdf.setGState(new (pdf as any).GState({ opacity: 0.15 }));
+    
+    // Fallback: juste les lignes épaisses
+    pdf.setGState(new (pdf as any).GState({ opacity: 1 }));
     pdf.setDrawColor(25, 118, 210);
-    pdf.setLineWidth(2.5); // Ligne plus épaisse pour être visible
+    pdf.setLineWidth(2);
     for (let i = 0; i < dataPoints.length; i++) {
       const nextIndex = (i + 1) % dataPoints.length;
       pdf.line(dataPoints[i][0], dataPoints[i][1], dataPoints[nextIndex][0], dataPoints[nextIndex][1]);
     }
-    
-    // Dessiner les points de données (cercles plus grands)
+
+    // Points de données
     pdf.setFillColor(25, 118, 210);
-    pdf.setDrawColor(25, 118, 210);
     dataPoints.forEach((point) => {
-      pdf.circle(point[0], point[1], 2, 'FD'); // Rempli avec bordure
+      pdf.circle(point[0], point[1], 1.8, 'F');
     });
   }
 
@@ -319,731 +366,753 @@ function generateRadarChartPage(pdf: jsPDF, audit: Audit, results: AuditResults)
   pdf.setFontSize(7);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(0, 0, 0);
-  
+
   radarData.forEach((data, index) => {
     const angle = (index * angleStep) - (Math.PI / 2);
-    const labelRadius = chartRadius + 15; // Plus d'espace pour les labels
+    const labelRadius = chartRadius + 15;
     const labelX = chartCenterX + labelRadius * Math.cos(angle);
     const labelY = chartCenterY + labelRadius * Math.sin(angle);
-    
-    // Ajuster l'alignement selon la position
+
     let align: 'left' | 'center' | 'right' = 'center';
-    if (Math.abs(Math.cos(angle)) > 0.5) {
+    if (Math.abs(Math.cos(angle)) > 0.3) {
       align = Math.cos(angle) > 0 ? 'left' : 'right';
     }
-    
-    const lines = pdf.splitTextToSize(data.category, 28);
+
+    // Découper les labels longs sur plusieurs lignes
+    const maxLabelWidth = 35;
+    const lines = pdf.splitTextToSize(data.category, maxLabelWidth);
     lines.forEach((line: string, lineIdx: number) => {
       pdf.text(line, labelX, labelY + (lineIdx * 3.5), { align });
     });
   });
 
-  // Résumé en bas de page
-  yPosition = pageHeight - 40;
-  
+  // ---- Résumé en bas de page ----
+  yPosition = pageHeight - 45;
+
   // Nombre de KO et amendes (gauche)
-  pdf.setFontSize(10);
+  pdf.setFontSize(11);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(211, 47, 47);
-  pdf.text(`Nombre de KO = ${results.numberOfKO}`, margin, yPosition);
-  pdf.text(`Amendes potentielles = ${formatNumber(results.potentialFines)} €`, margin, yPosition + 6);
+  pdf.text('Nombre de', margin, yPosition);
+  pdf.setFont('helvetica', 'bold');
+  // KO barré
+  const koX = margin + pdf.getTextWidth('Nombre de ');
+  pdf.text('KO', koX, yPosition);
+  // Barre sur KO
+  const koWidth = pdf.getTextWidth('KO');
+  pdf.setDrawColor(211, 47, 47);
+  pdf.setLineWidth(0.8);
+  pdf.line(koX, yPosition - 1, koX + koWidth, yPosition - 1);
+
+  pdf.text(` =     ${results.numberOfKO}`, koX + koWidth, yPosition);
+  yPosition += 7;
+  pdf.text(`Amendes potentielles =     ${formatNumber(results.potentialFines)} €`, margin, yPosition);
 
   // Score total (droite)
-  pdf.setFontSize(12);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(0, 0, 0);
   const totalScoreText = results.totalScore !== null ? `${formatNumber(results.totalScore, 2)} %` : '— %';
-  pdf.text('Maîtrise de l\'hygiène à :', pageWidth - margin - 50, yPosition, { align: 'right' });
-  
-  // Pastille de couleur selon la note
-  if (results.totalScore !== null) {
-    drawScoreBadge(pdf, pageWidth - margin - 30, yPosition + 3, results.totalScore);
-  }
-  
-  pdf.setFontSize(12);
+
+  // Ligne "Maîtrise de l'hygiène à :"
+  pdf.setFontSize(16);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(0, 0, 0);
+  const labelText = 'Maîtrise de l\'hygiène à :';
+  const labelWidth = pdf.getTextWidth(labelText);
+  const scoreTextWidth = pdf.getTextWidth(totalScoreText);
+  const badgeSize = 7;
+  const totalWidth = labelWidth + badgeSize * 2 + 8 + scoreTextWidth;
+  const startX = pageWidth - margin - totalWidth;
+
+  pdf.text(labelText, startX, yPosition);
+
+  // Pastille de couleur
+  if (results.totalScore !== null) {
+    drawScoreBadge(pdf, startX + labelWidth + badgeSize + 4, yPosition - 3, results.totalScore, badgeSize);
+  }
+
+  // Score
+  pdf.setFontSize(20);
+  pdf.setFont('helvetica', 'bold');
   pdf.text(totalScoreText, pageWidth - margin, yPosition, { align: 'right' });
 }
 
-/**
- * Générer la page "ACTIONS CORRECTIVES ATTENDUES" au début du PDF
- */
+// ========================================================================
+// PAGE 2 : ACTIONS CORRECTIVES ATTENDUES
+// ========================================================================
 function generateCorrectiveActionsPage(pdf: jsPDF, audit: Audit): void {
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 15;
-  let yPosition = margin;
 
-  // En-tête avec logo, titre et contact
-  // Logo Alexann (simulé par du texte pour l'instant)
-  pdf.setFontSize(14);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(25, 118, 210);
-  pdf.text('ALEXANN', margin, yPosition);
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Hygiène et qualité agroalimentaire', margin, yPosition + 5);
+  let yPosition = drawPageHeader(pdf, 'CARTOGRAPHIE RADAR\nLES BONNES PRATIQUES D\'HYGIENE');
 
-  // Titre au centre
-  pdf.setFontSize(12);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('CARTOGRAPHIE RADAR LES BONNES PRATIQUES D\'HYGIENE', pageWidth / 2, yPosition + 3, { align: 'center' });
-
-  // Contact à droite
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'normal');
-  const contactLines = [
-    'Anne SUQUET',
-    'anne@alexann.fr',
-    '06 46 45 67 33'
-  ];
-  contactLines.forEach((line, idx) => {
-    pdf.text(line, pageWidth - margin, yPosition + (idx * 4), { align: 'right' });
-  });
-
-  yPosition += 20;
+  yPosition += 10;
 
   // Titre du tableau
-  pdf.setFontSize(11);
+  pdf.setFontSize(13);
   pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(0, 0, 0);
   pdf.text('ACTIONS CORRECTIVES ATTENDUES', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 8;
+  yPosition += 12;
 
-  // Récupérer UNIQUEMENT les données saisies par l'auditeur dans le tableau
-  // Ne pas pré-remplir avec les observations - seul l'auditeur remplit le tableau
+  // Données des actions correctives
   let correctiveActionsData: CorrectiveActionData[] = [];
-  
   if (audit.correctiveActions && audit.correctiveActions.length > 0) {
-    // Utiliser uniquement les données sauvegardées depuis le tableau "Actions Correctives"
     correctiveActionsData = audit.correctiveActions.filter(ca => ca.ecart && ca.ecart.trim());
   }
-  // Si aucune donnée n'existe, le tableau reste vide (pas de pré-remplissage)
 
   // Largeurs des colonnes
   const availableWidth = pageWidth - 2 * margin;
   const colWidths = {
-    ecart: availableWidth * 0.30,           // 30%
-    actionCorrective: availableWidth * 0.25, // 25%
-    delai: availableWidth * 0.10,            // 10%
-    quand: availableWidth * 0.10,            // 10%
-    visa: availableWidth * 0.10,             // 10%
-    verification: availableWidth * 0.15,      // 15%
+    ecart: availableWidth * 0.28,
+    actionCorrective: availableWidth * 0.27,
+    delai: availableWidth * 0.08,
+    quand: availableWidth * 0.10,
+    visa: availableWidth * 0.10,
+    verification: availableWidth * 0.17,
   };
 
   const headerHeight = 10;
   const subHeaderHeight = 6;
 
-  // En-tête du tableau - Première ligne
+  // En-tête du tableau
   pdf.setFillColor(255, 255, 255);
   pdf.setDrawColor(0, 0, 0);
   pdf.setLineWidth(0.5);
-  
+
   let currentX = margin;
-  
+
   // Colonne "Ecarts constatés" (rowspan 2)
   pdf.rect(currentX, yPosition, colWidths.ecart, headerHeight + subHeaderHeight);
-  pdf.setFontSize(9);
+  pdf.setFontSize(8);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(0, 0, 0);
-  const ecartLines = pdf.splitTextToSize('Ecarts constatés', colWidths.ecart - 4);
-  ecartLines.forEach((line: string, idx: number) => {
-    pdf.text(line, currentX + colWidths.ecart / 2, yPosition + headerHeight / 2 + (idx * 4) - 1, { align: 'center' });
-  });
+  pdf.text('Ecarts constatés', currentX + colWidths.ecart / 2, yPosition + (headerHeight + subHeaderHeight) / 2 + 1, { align: 'center' });
   currentX += colWidths.ecart;
 
   // Colonne "Actions correctives définies par le responsable" (rowspan 2)
   pdf.rect(currentX, yPosition, colWidths.actionCorrective, headerHeight + subHeaderHeight);
-  const actionLines = pdf.splitTextToSize('Actions correctives définies par le responsable', colWidths.actionCorrective - 4);
-  actionLines.forEach((line: string, idx: number) => {
-    pdf.text(line, currentX + colWidths.actionCorrective / 2, yPosition + headerHeight / 2 + (idx * 4) - 1, { align: 'center' });
+  const actionHeaderLines = pdf.splitTextToSize('Actions correctives définies par le responsable', colWidths.actionCorrective - 4);
+  actionHeaderLines.forEach((line: string, idx: number) => {
+    pdf.text(line, currentX + colWidths.actionCorrective / 2, yPosition + 4 + (idx * 3.5), { align: 'center' });
   });
   currentX += colWidths.actionCorrective;
 
   // Colonne "Délai" (rowspan 2)
   pdf.rect(currentX, yPosition, colWidths.delai, headerHeight + subHeaderHeight);
-  pdf.text('Délai', currentX + colWidths.delai / 2, yPosition + headerHeight / 2 + 2, { align: 'center' });
+  pdf.text('Délai', currentX + colWidths.delai / 2, yPosition + (headerHeight + subHeaderHeight) / 2 + 1, { align: 'center' });
   currentX += colWidths.delai;
 
   // Colonne "Réalisation" (colspan 2)
   pdf.rect(currentX, yPosition, colWidths.quand + colWidths.visa, headerHeight);
   pdf.text('Réalisation', currentX + (colWidths.quand + colWidths.visa) / 2, yPosition + headerHeight / 2 + 2, { align: 'center' });
-  
+
   // Sous-colonnes "Quand" et "Visa"
+  pdf.setFontSize(7);
   pdf.rect(currentX, yPosition + headerHeight, colWidths.quand, subHeaderHeight);
-  pdf.setFontSize(8);
   pdf.text('Quand', currentX + colWidths.quand / 2, yPosition + headerHeight + subHeaderHeight / 2 + 1, { align: 'center' });
   currentX += colWidths.quand;
-  
+
   pdf.rect(currentX, yPosition + headerHeight, colWidths.visa, subHeaderHeight);
   pdf.text('Visa', currentX + colWidths.visa / 2, yPosition + headerHeight + subHeaderHeight / 2 + 1, { align: 'center' });
   currentX += colWidths.visa;
 
   // Colonne "Vérification" (rowspan 2)
+  pdf.setFontSize(8);
   pdf.rect(currentX, yPosition, colWidths.verification, headerHeight + subHeaderHeight);
-  pdf.setFontSize(9);
-  pdf.text('Vérification', currentX + colWidths.verification / 2, yPosition + headerHeight / 2 + 2, { align: 'center' });
+  pdf.text('Vérification', currentX + colWidths.verification / 2, yPosition + (headerHeight + subHeaderHeight) / 2 + 1, { align: 'center' });
 
   yPosition += headerHeight + subHeaderHeight;
 
-  // Lignes de données - Afficher les données saisies + lignes vides pour remplissage manuel
-  const minEmptyRows = 8; // Nombre minimum de lignes vides à afficher
-  const rowHeight = 10;
-  const maxRowsPerPage = Math.floor((pageHeight - yPosition - 20) / rowHeight);
-  
-  // Calculer le nombre total de lignes à afficher (données + lignes vides)
-  const totalRowsToShow = Math.max(correctiveActionsData.length, minEmptyRows);
-  
-  let dataIndex = 0;
-  let currentPage = 1;
+  // Lignes de données + lignes vides
+  const minEmptyRows = 8;
+  const rowHeight = 12;
+  const totalRowsToShow = Math.max(correctiveActionsData.length + 2, minEmptyRows);
 
-  while (dataIndex < totalRowsToShow) {
-    // Ajouter une nouvelle page si nécessaire (sauf pour la première)
-    if (currentPage > 1) {
+  for (let i = 0; i < totalRowsToShow; i++) {
+    // Nouvelle page si nécessaire
+    if (yPosition + rowHeight > pageHeight - 20) {
       pdf.addPage();
-      yPosition = margin + 20;
+      yPosition = 20;
     }
 
-    const rowsToShow = Math.min(maxRowsPerPage, totalRowsToShow - dataIndex);
-    
-    for (let i = 0; i < rowsToShow; i++) {
-      const rowIndex = dataIndex + i;
-      const rowData = rowIndex < correctiveActionsData.length ? correctiveActionsData[rowIndex] : null;
+    const rowData = i < correctiveActionsData.length ? correctiveActionsData[i] : null;
+    currentX = margin;
 
-      currentX = margin;
-      const cellY = yPosition + (i * rowHeight);
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.5);
+    pdf.setFontSize(7);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(0, 0, 0);
 
-      // Colonne Ecarts constatés
-      pdf.rect(currentX, cellY, colWidths.ecart, rowHeight);
-      pdf.setFontSize(7);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      if (rowData && rowData.ecart && rowData.ecart.trim()) {
-        const ecartLines = pdf.splitTextToSize(rowData.ecart.trim(), colWidths.ecart - 4);
-        ecartLines.forEach((line: string, idx: number) => {
-          pdf.text(line, currentX + 2, cellY + 3 + (idx * 3));
-        });
-      }
-      // Si pas de données, laisser vide (pas de texte)
-      currentX += colWidths.ecart;
+    // Ecarts
+    pdf.rect(currentX, yPosition, colWidths.ecart, rowHeight);
+    if (rowData?.ecart?.trim()) {
+      const lines = pdf.splitTextToSize(rowData.ecart.trim(), colWidths.ecart - 4);
+      lines.forEach((line: string, idx: number) => {
+        if (idx < 3) pdf.text(line, currentX + 2, yPosition + 3.5 + (idx * 3));
+      });
+    }
+    currentX += colWidths.ecart;
 
-      // Colonne Actions correctives
-      pdf.rect(currentX, cellY, colWidths.actionCorrective, rowHeight);
-      if (rowData && rowData.actionCorrective && rowData.actionCorrective.trim()) {
-        const actionLines = pdf.splitTextToSize(rowData.actionCorrective.trim(), colWidths.actionCorrective - 4);
-        actionLines.forEach((line: string, idx: number) => {
-          pdf.text(line, currentX + 2, cellY + 3 + (idx * 3));
-        });
-      }
-      // Si pas de données, laisser vide
-      currentX += colWidths.actionCorrective;
+    // Actions correctives
+    pdf.rect(currentX, yPosition, colWidths.actionCorrective, rowHeight);
+    if (rowData?.actionCorrective?.trim()) {
+      const lines = pdf.splitTextToSize(rowData.actionCorrective.trim(), colWidths.actionCorrective - 4);
+      lines.forEach((line: string, idx: number) => {
+        if (idx < 3) pdf.text(line, currentX + 2, yPosition + 3.5 + (idx * 3));
+      });
+    }
+    currentX += colWidths.actionCorrective;
 
-      // Colonne Délai
-      pdf.rect(currentX, cellY, colWidths.delai, rowHeight);
-      if (rowData && rowData.delai && rowData.delai.trim()) {
-        pdf.text(rowData.delai.trim(), currentX + 2, cellY + 6);
-      }
-      // Si pas de données, laisser vide
-      currentX += colWidths.delai;
+    // Délai
+    pdf.rect(currentX, yPosition, colWidths.delai, rowHeight);
+    if (rowData?.delai?.trim()) {
+      pdf.text(rowData.delai.trim(), currentX + colWidths.delai / 2, yPosition + rowHeight / 2 + 1, { align: 'center' });
+    }
+    currentX += colWidths.delai;
 
-      // Colonne Quand
-      pdf.rect(currentX, cellY, colWidths.quand, rowHeight);
-      if (rowData && rowData.quand && rowData.quand.trim()) {
-        pdf.text(rowData.quand.trim(), currentX + 2, cellY + 6);
-      }
-      // Si pas de données, laisser vide
-      currentX += colWidths.quand;
+    // Quand
+    pdf.rect(currentX, yPosition, colWidths.quand, rowHeight);
+    if (rowData?.quand?.trim()) {
+      pdf.text(rowData.quand.trim(), currentX + 2, yPosition + rowHeight / 2 + 1);
+    }
+    currentX += colWidths.quand;
 
-      // Colonne Visa
-      pdf.rect(currentX, cellY, colWidths.visa, rowHeight);
-      if (rowData && rowData.visa && rowData.visa.trim()) {
-        pdf.text(rowData.visa.trim(), currentX + 2, cellY + 6);
-      }
-      // Si pas de données, laisser vide
-      currentX += colWidths.visa;
+    // Visa
+    pdf.rect(currentX, yPosition, colWidths.visa, rowHeight);
+    if (rowData?.visa?.trim()) {
+      pdf.text(rowData.visa.trim(), currentX + 2, yPosition + rowHeight / 2 + 1);
+    }
+    currentX += colWidths.visa;
 
-      // Colonne Vérification
-      pdf.rect(currentX, cellY, colWidths.verification, rowHeight);
-      if (rowData && rowData.verification && rowData.verification.trim()) {
-        pdf.text(rowData.verification.trim(), currentX + 2, cellY + 6);
-      }
-      // Si pas de données, laisser vide
+    // Vérification
+    pdf.rect(currentX, yPosition, colWidths.verification, rowHeight);
+    if (rowData?.verification?.trim()) {
+      pdf.text(rowData.verification.trim(), currentX + 2, yPosition + rowHeight / 2 + 1);
     }
 
-    dataIndex += rowsToShow;
-    currentPage++;
+    yPosition += rowHeight;
   }
 }
 
+// ========================================================================
+// PAGES D'AUDIT : Tableau détaillé par catégorie
+// ========================================================================
+
 /**
- * Générer un rapport PDF à partir d'un audit avec un tableau structuré
+ * Générer les pages d'audit détaillées avec le format de référence :
+ * [Nom item] | KO | * | Note | Commentaires | Actions correctives | Photo(s)
  */
-export async function generatePDFReport(audit: Audit, results: AuditResults): Promise<void> {
-  console.log('Génération PDF - Audit:', audit);
-  console.log('Génération PDF - Catégories:', audit.categories);
-  
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  
-  // Générer d'abord la page avec le graphique radar
-  generateRadarChartPage(pdf, audit, results);
-  
-  // Ajouter la page "ACTIONS CORRECTIVES ATTENDUES"
-  pdf.addPage();
-  generateCorrectiveActionsPage(pdf, audit);
-  
-  // Ajouter une nouvelle page pour le reste du rapport
-  pdf.addPage();
-  
+async function generateAuditDetailPages(pdf: jsPDF, audit: Audit, results: AuditResults): Promise<void> {
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 15;
+  const margin = 10; // Marges réduites pour maximiser l'espace tableau
+  const availableWidth = pageWidth - 2 * margin;
+
+  // Colonnes selon le format de référence PDF — Photo(s) prend ~40% de la largeur
+  const colWidths = {
+    itemName: availableWidth * 0.14,  // Nom de l'item (compact)
+    ko: 5,                            // Colonne KO (barre rouge fine)
+    star: 8,                          // * (note brute : 1, 0.7, 0.3, 0)
+    note: 12,                         // Note (contribution %)
+    comments: availableWidth * 0.15,  // Commentaires
+    actions: availableWidth * 0.13,   // Actions correctives
+    photos: 0,                        // Photo(s) - calculé ci-dessous (~40%)
+  };
+  // La colonne photos prend tout le reste de la largeur (~40%)
+  colWidths.photos = availableWidth - colWidths.itemName - colWidths.ko - colWidths.star - colWidths.note - colWidths.comments - colWidths.actions;
+
   let yPosition = margin;
 
-  // Fonction pour ajouter une nouvelle page si nécessaire
-  const checkPageBreak = (requiredHeight: number) => {
-    if (yPosition + requiredHeight > pageHeight - margin - 20) {
-      pdf.addPage();
-      yPosition = margin;
-      return true;
-    }
-    return false;
+  // Fonction pour dessiner l'en-tête de page
+  const drawAuditPageHeader = (): number => {
+    let y = drawPageHeader(pdf, 'AUDIT\nLES BONNES PRATIQUES D\'HYGIENE', margin);
+
+    // Ligne info : Date + Adresse
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(`Date de l'exécution :`, margin, y);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`${new Date(audit.dateExecution).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, margin + 35, y);
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`Adresse :`, margin + 70, y);
+    pdf.setFont('helvetica', 'normal');
+    const adresseMaxWidth = pageWidth - margin - 70 - 20;
+    const adresseLines = pdf.splitTextToSize(audit.adresse, adresseMaxWidth);
+    adresseLines.forEach((line: string, idx: number) => {
+      pdf.text(line, margin + 85, y + (idx * 3.5));
+    });
+
+    y += Math.max(5, adresseLines.length * 3.5 + 2);
+    return y;
   };
 
-  // En-tête du document (format Alexann)
-  // Logo à gauche
-  pdf.setFontSize(14);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(25, 118, 210);
-  pdf.text('ALEXANN', margin, yPosition);
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Hygiène et qualité agroalimentaire', margin, yPosition + 5);
-  
-  // Titre au centre
-  pdf.setFontSize(12);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('AUDIT LES BONNES PRATIQUES D\'HYGIENE', pageWidth / 2, yPosition + 3, { align: 'center' });
-  
-  // Contact à droite
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'normal');
-  const contactLines = [
-    'Anne SUQUET',
-    'anne@alexann.fr',
-    '06 46 45 67 33'
-  ];
-  contactLines.forEach((line, idx) => {
-    pdf.text(line, pageWidth - margin, yPosition + (idx * 4), { align: 'right' });
-  });
-  
-  yPosition += 15;
-  
-  // Date et adresse
-  pdf.setFontSize(9);
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(`Date de l'exécution : ${new Date(audit.dateExecution).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, margin, yPosition);
-  pdf.text(`Adresse : ${audit.adresse}`, margin + 80, yPosition);
-  
-  yPosition += 8;
+  // Fonction pour dessiner l'en-tête de colonnes du tableau
+  const drawTableColumnHeaders = (y: number): number => {
+    const headerHeight = 8;
+    let x = margin;
 
-  // Tableau principal par catégorie
+    pdf.setFillColor(220, 220, 220);
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.5);
+    pdf.setFontSize(6.5);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(0, 0, 0);
+
+    // Vide (espace pour le nom de la catégorie)
+    pdf.rect(x, y, colWidths.itemName, headerHeight);
+    x += colWidths.itemName;
+
+    // KO
+    pdf.rect(x, y, colWidths.ko, headerHeight);
+    pdf.setTextColor(220, 53, 69);
+    pdf.text('KO', x + colWidths.ko / 2, y + headerHeight / 2 + 1.5, { align: 'center' });
+    pdf.setTextColor(0, 0, 0);
+    x += colWidths.ko;
+
+    // *
+    pdf.rect(x, y, colWidths.star, headerHeight);
+    pdf.text('*', x + colWidths.star / 2, y + headerHeight / 2 + 1.5, { align: 'center' });
+    x += colWidths.star;
+
+    // Note
+    pdf.rect(x, y, colWidths.note, headerHeight);
+    pdf.text('Note', x + colWidths.note / 2, y + headerHeight / 2 + 1.5, { align: 'center' });
+    x += colWidths.note;
+
+    // Commentaires
+    pdf.rect(x, y, colWidths.comments, headerHeight);
+    pdf.text('Commentaires', x + colWidths.comments / 2, y + headerHeight / 2 + 1.5, { align: 'center' });
+    x += colWidths.comments;
+
+    // Actions correctives
+    pdf.rect(x, y, colWidths.actions, headerHeight);
+    pdf.text('Actions correctives', x + colWidths.actions / 2, y + headerHeight / 2 + 1.5, { align: 'center' });
+    x += colWidths.actions;
+
+    // Photo(s)
+    pdf.rect(x, y, colWidths.photos, headerHeight);
+    pdf.text('Photo(s)', x + colWidths.photos / 2, y + headerHeight / 2 + 1.5, { align: 'center' });
+
+    return y + headerHeight;
+  };
+
+
+  // Parcourir les catégories - CHAQUE CATÉGORIE SUR SA PROPRE PAGE
   for (let catIndex = 0; catIndex < audit.categories.length; catIndex++) {
     const category = audit.categories[catIndex];
-    // Vérifier si la catégorie a des items audités
     const auditedItems = category.items.filter(item => item.isAudited);
     if (auditedItems.length === 0) continue;
 
-    // Calculer le score de la catégorie
     const categoryScore = results.categoryScores[category.id];
-    const categoryScoreText = categoryScore !== null && categoryScore !== undefined 
-      ? `${formatNumber(categoryScore, 0)}%` 
+    const categoryScoreText = categoryScore !== null && categoryScore !== undefined
+      ? `${formatNumber(categoryScore, 0)}%`
       : '';
+    const categoryTitle = category.name.replace(/^\d+\.\s*/, '');
 
-    // En-tête du tableau avec colonnes : NO | * | Note | Commentaires | Actions correctives | Photo(s)
-    const availableWidth = pageWidth - 2 * margin;
-    const colWidths = {
-      no: 8,          // NO (numéro)
-      star: 8,        // * (note brute)
-      note: 12,       // Note (contribution %)
-      comments: (availableWidth - 8 - 8 - 12 - 45) * 0.45,  // Commentaires
-      actions: (availableWidth - 8 - 8 - 12 - 45) * 0.45,  // Actions
-      photos: 45      // Photos (augmenté pour plus de visibilité)
-    };
+    // ---- NOUVELLE PAGE POUR CHAQUE CATÉGORIE ----
+    pdf.addPage();
+    yPosition = drawAuditPageHeader();
 
-    // Titre de la catégorie avec score
-    checkPageBreak(30);
-    pdf.setFontSize(12);
+    // En-tête colonnes du tableau
+    yPosition = drawTableColumnHeaders(yPosition);
+
+    // Bandeau catégorie (professionnel avec fond gris clair)
+    const categoryHeaderHeight = 10;
+    pdf.setFillColor(240, 240, 240);
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.5);
+    pdf.rect(margin, yPosition, availableWidth, categoryHeaderHeight, 'FD');
+
+    // Titre de la catégorie (gauche, en bleu)
+    pdf.setFontSize(10);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(25, 118, 210);
-    const categoryTitle = category.name.replace(/^\d+\.\s*/, '');
-    
-    // Afficher le titre de catégorie et le score si disponible
+    pdf.text(`${catIndex + 1}. ${categoryTitle.toUpperCase()}`, margin + 3, yPosition + categoryHeaderHeight / 2 + 2);
+
+    // Score de la catégorie (droite, aligné avec la colonne Note)
     if (categoryScoreText) {
-      pdf.text(`${catIndex + 1}. ${categoryTitle.toUpperCase()}`, margin, yPosition);
-      // Afficher le score à droite de l'en-tête
-      pdf.setFontSize(10);
+      pdf.setFontSize(9);
       pdf.setTextColor(0, 0, 0);
-      pdf.text(categoryScoreText, pageWidth - margin, yPosition, { align: 'right' });
-      yPosition += 5;
-      
-      // En-tête du tableau
-      let currentX = margin;
-      pdf.setFillColor(240, 240, 240);
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.5);
-      
-      pdf.rect(currentX, yPosition, colWidths.no, 8);
-      pdf.setFontSize(7);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('NO', currentX + colWidths.no / 2, yPosition + 5, { align: 'center' });
-      currentX += colWidths.no;
-
-      pdf.rect(currentX, yPosition, colWidths.star, 8);
-      pdf.text('*', currentX + colWidths.star / 2, yPosition + 5, { align: 'center' });
-      currentX += colWidths.star;
-
-      pdf.rect(currentX, yPosition, colWidths.note, 8);
-      pdf.text('Note', currentX + colWidths.note / 2, yPosition + 5, { align: 'center' });
-      currentX += colWidths.note;
-
-      pdf.rect(currentX, yPosition, colWidths.comments, 8);
-      pdf.setFontSize(6);
-      pdf.text('Commentaires', currentX + colWidths.comments / 2, yPosition + 5, { align: 'center' });
-      currentX += colWidths.comments;
-
-      pdf.rect(currentX, yPosition, colWidths.actions, 8);
-      pdf.text('Actions correctives', currentX + colWidths.actions / 2, yPosition + 5, { align: 'center' });
-      currentX += colWidths.actions;
-
-      pdf.rect(currentX, yPosition, colWidths.photos, 8);
-      pdf.text('Photo(s)', currentX + colWidths.photos / 2, yPosition + 5, { align: 'center' });
-
-      yPosition += 8;
-
-      // Lignes du tableau pour chaque item audité
-      let itemNumber = 1;
-      for (const item of auditedItems) {
-        // Calculer la note brute et la contribution
-        const rawNote = item.numberOfNonConformities !== null 
-          ? convertNonConformitiesToNote(item.classification, item.numberOfNonConformities)
-          : null;
-        const contribution = rawNote !== null && rawNote !== undefined
-          ? calculateItemContribution({ ...item, note: rawNote }, category.items)
-          : 0;
-        
-        // Calculer la hauteur nécessaire pour cette ligne
-        let commentsLines = 1;
-        let actionsLines = 1;
-        
-        if (item.observations && item.observations.length > 0) {
-          commentsLines = item.observations.reduce((total, obs) => {
-            if (obs && obs.text && obs.text.trim()) {
-              return total + pdf.splitTextToSize(obs.text.trim(), colWidths.comments - 4).length;
-            }
-            return total;
-          }, 0);
-          
-          actionsLines = item.observations
-            .filter(obs => obs && obs.correctiveAction && obs.correctiveAction.trim())
-            .reduce((total, obs) => {
-              return total + pdf.splitTextToSize(obs.correctiveAction || '', colWidths.actions - 4).length;
-            }, 0) || 1;
-        }
-        
-        // Calculer la hauteur pour les photos
-        const photosRows = item.photos.length > 0 ? Math.ceil(Math.min(item.photos.length, 3) / 3) : 0;
-        const photoHeight = photosRows > 0 ? photosRows * 22 + 4 : 0;
-        
-        const rowHeight = Math.max(
-          10, // Hauteur minimale
-          Math.max(commentsLines, actionsLines) * 3.5 + 4,
-          photoHeight
-        );
-
-        checkPageBreak(rowHeight + 5);
-
-        let currentX = margin;
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.5);
-      
-      // Colonne NO
-      pdf.rect(currentX, yPosition, colWidths.no, rowHeight);
-      pdf.setFontSize(7);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      pdf.text(itemNumber.toString(), currentX + colWidths.no / 2, yPosition + rowHeight / 2 + 2, { align: 'center' });
-      currentX += colWidths.no;
-
-      // Colonne * (note brute)
-      pdf.rect(currentX, yPosition, colWidths.star, rowHeight);
-      if (rawNote !== null && rawNote !== undefined) {
-        pdf.text(formatRawNote(rawNote), currentX + colWidths.star / 2, yPosition + rowHeight / 2 + 2, { align: 'center' });
-      }
-      currentX += colWidths.star;
-
-      // Colonne Note (contribution %)
-      pdf.rect(currentX, yPosition, colWidths.note, rowHeight);
-      if (contribution > 0) {
-        pdf.text(`${contribution}%`, currentX + colWidths.note / 2, yPosition + rowHeight / 2 + 2, { align: 'center' });
-      }
-      currentX += colWidths.note;
-
-      // Colonne Commentaires
-      pdf.rect(currentX, yPosition, colWidths.comments, rowHeight);
-      pdf.setFontSize(7);
-      pdf.setTextColor(0, 0, 0);
-      pdf.setFont('helvetica', 'normal');
-      if (item.observations && item.observations.length > 0) {
-        let commentY = yPosition + 3.5;
-        let hasComments = false;
-        item.observations.forEach((obs) => {
-          if (obs && obs.text && obs.text.trim()) {
-            hasComments = true;
-            const lines = pdf.splitTextToSize(obs.text.trim(), colWidths.comments - 4);
-            lines.forEach((line: string, lineIdx: number) => {
-              pdf.text(line, currentX + 2, commentY + (lineIdx * 3.5));
-            });
-            commentY += lines.length * 3.5 + 0.5;
-          }
-        });
-        if (!hasComments) {
-          pdf.setTextColor(128, 128, 128);
-          pdf.text('-', currentX + colWidths.comments / 2, yPosition + rowHeight / 2 + 2, { align: 'center' });
-        }
-      } else {
-        pdf.setTextColor(128, 128, 128);
-        pdf.text('-', currentX + colWidths.comments / 2, yPosition + rowHeight / 2 + 2, { align: 'center' });
-      }
-      currentX += colWidths.comments;
-
-      // Colonne Actions correctives
-      pdf.rect(currentX, yPosition, colWidths.actions, rowHeight);
-      pdf.setFontSize(7);
-      pdf.setTextColor(0, 0, 0);
-      pdf.setFont('helvetica', 'normal');
-      if (item.observations && item.observations.length > 0) {
-        let actionY = yPosition + 3.5;
-        let hasActions = false;
-        // Afficher les actions dans le même ordre que les commentaires
-        item.observations.forEach((obs) => {
-          if (obs && obs.correctiveAction && obs.correctiveAction.trim()) {
-            hasActions = true;
-            const lines = pdf.splitTextToSize(obs.correctiveAction.trim(), colWidths.actions - 4);
-            lines.forEach((line: string, lineIdx: number) => {
-              pdf.text(line, currentX + 2, actionY + (lineIdx * 3.5));
-            });
-            actionY += lines.length * 3.5 + 0.5;
-          } else {
-            // Si pas d'action pour ce commentaire, laisser un espace
-            actionY += 3.5;
-          }
-        });
-        if (!hasActions) {
-          pdf.setTextColor(128, 128, 128);
-          pdf.text('-', currentX + colWidths.actions / 2, yPosition + rowHeight / 2 + 2, { align: 'center' });
-        }
-      } else {
-        pdf.setTextColor(128, 128, 128);
-        pdf.text('-', currentX + colWidths.actions / 2, yPosition + rowHeight / 2 + 2, { align: 'center' });
-      }
-      currentX += colWidths.actions;
-
-      // Colonne Photos
-      pdf.rect(currentX, yPosition, colWidths.photos, rowHeight);
-      if (item.photos.length > 0) {
-        // Charger et ajouter les photos
-        let photoX = currentX + 3;
-        let photoY = yPosition + 3;
-        const maxPhotosPerRow = 2; // 2 photos par ligne pour plus de visibilité
-        const photoSize = Math.min(35, (colWidths.photos - 8) / maxPhotosPerRow); // Taille augmentée (35mm max)
-        
-        for (let i = 0; i < Math.min(maxPhotosPerRow * 2, item.photos.length); i++) {
-          const photoData = item.photos[i];
-          
-          if (!photoData || photoData.trim() === '') {
-            console.warn('Photo vide à l\'index', i);
-            continue;
-          }
-          
-          // Déclarer les variables avant le try pour qu'elles soient accessibles dans le catch
-          let base64Data: string = photoData;
-          let imageFormat: 'JPEG' | 'PNG' = 'JPEG';
-          
-          // Extraire le base64 et déterminer le format avant le traitement
-          if (photoData.startsWith('data:image/png')) {
-            imageFormat = 'PNG';
-          }
-          if (photoData.startsWith('data:image/')) {
-            const base64Index = photoData.indexOf(',');
-            if (base64Index !== -1) {
-              base64Data = photoData.substring(base64Index + 1);
-            }
-          }
-          
-          try {
-            // Créer une image pour obtenir les dimensions
-            const img = new Image();
-            
-            await new Promise<void>((resolve) => {
-              const timeout = setTimeout(() => {
-                console.warn('Timeout chargement photo', i, 'pour item', item.name);
-                resolve();
-              }, 15000); // Timeout augmenté à 15 secondes
-              
-              const processImage = () => {
-                clearTimeout(timeout);
-                try {
-                  if (!img.width || !img.height || img.naturalWidth === 0 || img.naturalHeight === 0) {
-                    console.warn('Image invalide:', i, 'dimensions:', img.width, 'x', img.height);
-                    resolve();
-                    return;
-                  }
-                  
-                  console.log('Traitement photo', i, 'dimensions:', img.width, 'x', img.height);
-                  
-                  // Redimensionner l'image pour qu'elle rentre dans la cellule
-                  let finalWidth = photoSize;
-                  let finalHeight = photoSize;
-                  
-                  const aspectRatio = img.width / img.height;
-                  if (aspectRatio > 1) {
-                    // Image horizontale
-                    finalHeight = photoSize / aspectRatio;
-                  } else {
-                    // Image verticale
-                    finalWidth = photoSize * aspectRatio;
-                  }
-                  
-                  // Ajouter un petit cadre autour de la photo
-                  pdf.setDrawColor(200, 200, 200);
-                  pdf.setLineWidth(0.1);
-                  pdf.rect(photoX - 0.5, photoY - 0.5, finalWidth + 1, finalHeight + 1);
-                  
-                  // Ajouter l'image au PDF
-                  console.log('Ajout photo au PDF:', i, 'format:', imageFormat, 'taille:', finalWidth, 'x', finalHeight, 'position:', photoX, photoY);
-                  pdf.addImage(base64Data, imageFormat, photoX, photoY, finalWidth, finalHeight);
-                  
-                  photoX += photoSize + 3;
-                  if ((i + 1) % maxPhotosPerRow === 0) {
-                    photoX = currentX + 3;
-                    photoY += photoSize + 3;
-                  }
-                  console.log('Photo', i, 'ajoutée avec succès');
-                  resolve();
-                } catch (error) {
-                  console.error('Erreur lors de l\'ajout de l\'image au PDF:', error, i, 'base64 length:', base64Data?.length);
-                  // Afficher un indicateur visuel en cas d'erreur
-                  pdf.setFontSize(8);
-                  pdf.setTextColor(255, 0, 0);
-                  pdf.text('Erreur', photoX, photoY + 5);
-                  resolve();
-                }
-              };
-              
-              img.onload = processImage;
-              img.onerror = (error) => {
-                clearTimeout(timeout);
-                console.error('Erreur lors du chargement de l\'image:', error, i);
-                resolve();
-              };
-              
-              // Charger l'image
-              img.crossOrigin = 'anonymous';
-              img.src = photoData;
-              
-              // Si l'image est déjà chargée
-              if (img.complete && img.naturalWidth > 0) {
-                processImage();
-              }
-            });
-          } catch (error) {
-            console.error('Erreur lors du traitement de la photo:', error, i);
-          }
-        }
-        
-        if (item.photos.length > maxPhotosPerRow * 2) {
-          pdf.setFontSize(6);
-          pdf.setTextColor(0, 0, 0);
-          pdf.text(`+${item.photos.length - maxPhotosPerRow * 2}`, photoX, photoY);
-        }
-      } else {
-        pdf.setTextColor(128, 128, 128);
-        pdf.text('-', currentX + colWidths.photos / 2, yPosition + rowHeight / 2 + 2, { align: 'center' });
-      }
-
-        yPosition += rowHeight;
-        itemNumber++;
-      }
-    } else {
-      // Si pas de score, juste le titre
-      pdf.text(`${catIndex + 1}. ${categoryTitle.toUpperCase()}`, margin, yPosition);
-      yPosition += 8;
+      const scoreX = margin + colWidths.itemName + colWidths.ko + colWidths.star + colWidths.note / 2;
+      pdf.text(categoryScoreText, scoreX, yPosition + categoryHeaderHeight / 2 + 2, { align: 'center' });
     }
 
-    // Ligne de séparation après la catégorie
-    yPosition += 3;
+    yPosition += categoryHeaderHeight + 2;
+
+    // ---- Lignes des items ----
+    for (const item of auditedItems) {
+      const rawNote = item.numberOfNonConformities !== null
+        ? convertNonConformitiesToNote(item.classification, item.numberOfNonConformities)
+        : null;
+      const contribution = rawNote !== null && rawNote !== undefined
+        ? calculateItemContribution({ ...item, note: rawNote }, category.items)
+        : 0;
+
+      // Déterminer si c'est un KO (pas de note ou note très basse)
+      const isKO = rawNote === null || rawNote === undefined || (rawNote !== 1 && rawNote !== 0.7);
+
+      // Préparer les lignes de texte pour commentaires et actions
+      const commentTexts: string[] = [];
+      const actionTexts: string[] = [];
+
+      if (item.observations && item.observations.length > 0) {
+        item.observations.forEach((obs) => {
+          if (obs?.text?.trim()) {
+            commentTexts.push(obs.text.trim());
+          }
+          if (obs?.correctiveAction?.trim()) {
+            actionTexts.push(obs.correctiveAction.trim());
+          } else if (obs?.text?.trim()) {
+            actionTexts.push(''); // Garder l'alignement
+          }
+        });
+      }
+
+      // Calculer le nombre de lignes pour les commentaires
+      let totalCommentLines = 0;
+      const commentLineArrays: string[][] = [];
+      commentTexts.forEach(text => {
+        const lines = pdf.splitTextToSize(text, colWidths.comments - 4);
+        commentLineArrays.push(lines);
+        totalCommentLines += lines.length + 0.5; // espacement entre observations
+      });
+
+      let totalActionLines = 0;
+      const actionLineArrays: string[][] = [];
+      actionTexts.forEach(text => {
+        if (text) {
+          const lines = pdf.splitTextToSize(text, colWidths.actions - 4);
+          actionLineArrays.push(lines);
+          totalActionLines += lines.length + 0.5;
+        } else {
+          actionLineArrays.push([]);
+          totalActionLines += 1;
+        }
+      });
+
+      // Calculer la hauteur pour les photos
+      const numPhotos = item.photos ? item.photos.length : 0;
+      // Photos : grande taille, jusqu'à 2 par ligne côte à côte
+      const photoGap = 3;
+      const maxPhotoWidth = (colWidths.photos - photoGap * 3) / 2; // 2 photos par ligne avec marges
+      const maxPhotoSize = Math.min(45, maxPhotoWidth); // Taille max 45mm
+      const photosPerRow = 2;
+      const photoRows = numPhotos > 0 ? Math.ceil(Math.min(numPhotos, 6) / photosPerRow) : 0;
+      const photoContentHeight = photoRows > 0 ? photoRows * (maxPhotoSize + photoGap) + 6 : 0;
+
+      // Calculer la hauteur du nom de l'item
+      pdf.setFontSize(7);
+      const itemNameLines = pdf.splitTextToSize(item.name || '', colWidths.itemName - 6);
+      const itemNameHeight = itemNameLines.length * 3.5 + 6;
+
+      // Hauteur de la ligne = max de tous les contenus
+      const textHeight = Math.max(totalCommentLines, totalActionLines) * 3.5 + 6;
+      let rowHeight = Math.max(
+        20, // Hauteur minimale augmentée
+        itemNameHeight,
+        textHeight,
+        photoContentHeight
+      );
+
+      // Vérifier saut de page (si la ligne ne rentre pas, on continue sur la même page pour cette catégorie)
+      if (yPosition + rowHeight > pageHeight - 30) {
+        // Si on dépasse, on réduit la hauteur de la ligne ou on tronque les photos
+        const availableHeight = pageHeight - yPosition - 30;
+        if (availableHeight < 15) {
+          // Pas assez de place, on passe à la ligne suivante en réduisant
+          rowHeight = Math.max(15, availableHeight);
+        }
+      }
+
+      let x = margin;
+
+      // ---- Colonne Nom de l'item ----
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.5);
+      pdf.rect(x, yPosition, colWidths.itemName, rowHeight);
+      pdf.setFontSize(7);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      const nameY = yPosition + rowHeight / 2 - (itemNameLines.length * 3.5) / 2 + 3;
+      itemNameLines.forEach((line: string, idx: number) => {
+        pdf.text(line, x + 3, nameY + (idx * 3.5));
+      });
+      x += colWidths.itemName;
+
+      // ---- Colonne KO (barre rouge) ----
+      pdf.rect(x, yPosition, colWidths.ko, rowHeight);
+      // Barre rouge verticale à gauche (indicateur visuel comme dans le PDF de référence)
+      // Toujours afficher la barre rouge si c'est un KO ou si la note est faible
+      if (isKO || (rawNote !== null && rawNote !== undefined && rawNote !== 1 && rawNote !== 0.7)) {
+        pdf.setFillColor(220, 53, 69);
+        pdf.rect(x, yPosition, 2, rowHeight, 'F');
+        
+        // Afficher "1" si c'est un vrai KO (item.ko > 0)
+        if (item.ko > 0) {
+          pdf.setFontSize(6);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(220, 53, 69);
+          pdf.text('1', x + colWidths.ko / 2 + 1, yPosition + rowHeight / 2 + 1, { align: 'center' });
+        }
+      }
+      // Bordure de la cellule
+      pdf.setDrawColor(0, 0, 0);
+      pdf.rect(x, yPosition, colWidths.ko, rowHeight);
+      x += colWidths.ko;
+
+      // ---- Colonne * (note brute) ----
+      pdf.rect(x, yPosition, colWidths.star, rowHeight);
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      if (rawNote !== null && rawNote !== undefined) {
+        pdf.text(formatRawNote(rawNote), x + colWidths.star / 2, yPosition + rowHeight / 2 + 1, { align: 'center' });
+      }
+      x += colWidths.star;
+
+      // ---- Colonne Note (contribution %) ----
+      pdf.rect(x, yPosition, colWidths.note, rowHeight);
+      if (contribution > 0) {
+        pdf.text(`${contribution}%`, x + colWidths.note / 2, yPosition + rowHeight / 2 + 1, { align: 'center' });
+      }
+      x += colWidths.note;
+
+      // ---- Colonne Commentaires ----
+      pdf.rect(x, yPosition, colWidths.comments, rowHeight);
+      pdf.setFontSize(7);
+      pdf.setTextColor(0, 0, 0);
+      let commentY = yPosition + 4;
+      if (commentLineArrays.length > 0) {
+        commentLineArrays.forEach((lines, obsIdx) => {
+          // Vérifier si c'est un KO/alerte (texte en rouge dans le PDF de référence)
+          const originalText = commentTexts[obsIdx] || '';
+          const isAlert = originalText.toLowerCase().includes('dlc dépassée') ||
+                          originalText.toLowerCase().includes('amendes') ||
+                          originalText.toLowerCase().includes('salissures anciennes');
+
+          if (isAlert && rawNote !== null && rawNote !== undefined && (rawNote === 0 || rawNote === 0.3)) {
+            pdf.setFillColor(255, 200, 200);
+            const alertHeight = lines.length * 3.5 + 1;
+            pdf.rect(x + 1, commentY - 2, colWidths.comments - 2, alertHeight, 'F');
+            pdf.setTextColor(180, 0, 0);
+          } else {
+            pdf.setTextColor(0, 0, 0);
+          }
+
+          lines.forEach((line: string, lineIdx: number) => {
+            pdf.text(line, x + 2, commentY + (lineIdx * 3.5));
+          });
+          commentY += lines.length * 3.5 + 2;
+          pdf.setTextColor(0, 0, 0);
+        });
+      } else {
+        pdf.setTextColor(128, 128, 128);
+        pdf.text('-', x + colWidths.comments / 2, yPosition + rowHeight / 2 + 1, { align: 'center' });
+      }
+      x += colWidths.comments;
+
+      // ---- Colonne Actions correctives ----
+      pdf.rect(x, yPosition, colWidths.actions, rowHeight);
+      pdf.setFontSize(7);
+      pdf.setTextColor(0, 0, 0);
+      let actionY = yPosition + 4;
+      let hasActions = false;
+      actionLineArrays.forEach((lines) => {
+        if (lines.length > 0) {
+          hasActions = true;
+          lines.forEach((line: string, lineIdx: number) => {
+            pdf.text(line, x + 2, actionY + (lineIdx * 3.5));
+          });
+          actionY += lines.length * 3.5 + 2;
+        } else {
+          actionY += 3.5 + 2;
+        }
+      });
+      if (!hasActions && commentLineArrays.length === 0) {
+        pdf.setTextColor(128, 128, 128);
+        pdf.text('-', x + colWidths.actions / 2, yPosition + rowHeight / 2 + 1, { align: 'center' });
+      }
+      x += colWidths.actions;
+
+      // ---- Colonne Photos ----
+      pdf.rect(x, yPosition, colWidths.photos, rowHeight);
+      if (numPhotos > 0) {
+        let photoX = x + photoGap;
+        let photoY = yPosition + photoGap;
+        let photosPlaced = 0;
+        const maxPhotosToShow = Math.min(6, numPhotos);
+
+        for (let i = 0; i < maxPhotosToShow; i++) {
+          try {
+            const imgInfo = await loadImage(item.photos[i]);
+            if (imgInfo) {
+              // Calculer les dimensions en préservant le ratio
+              const aspectRatio = imgInfo.width / imgInfo.height;
+              let finalWidth: number;
+              let finalHeight: number;
+
+              if (aspectRatio > 1) {
+                // Image horizontale
+                finalWidth = maxPhotoSize;
+                finalHeight = maxPhotoSize / aspectRatio;
+              } else {
+                // Image verticale ou carrée
+                finalHeight = maxPhotoSize;
+                finalWidth = maxPhotoSize * aspectRatio;
+              }
+
+              // Vérifier si on doit passer à la ligne suivante
+              if (photosPlaced > 0 && photosPlaced % photosPerRow === 0) {
+                photoX = x + photoGap;
+                photoY += maxPhotoSize + photoGap;
+              }
+
+              // Ne pas dépasser la cellule
+              if (photoY + finalHeight <= yPosition + rowHeight - 2) {
+                pdf.addImage(imgInfo.data, imgInfo.format, photoX, photoY, finalWidth, finalHeight);
+              }
+
+              photoX += maxPhotoSize + photoGap;
+              photosPlaced++;
+            }
+          } catch (error) {
+            console.error('Erreur ajout photo au PDF:', error);
+          }
+        }
+
+        // Indicateur "+N" si plus de photos que le max affiché
+        if (numPhotos > maxPhotosToShow) {
+          pdf.setFontSize(6);
+          pdf.setTextColor(100, 100, 100);
+          pdf.text(`+${numPhotos - maxPhotosToShow}`, x + colWidths.photos - 8, yPosition + rowHeight - 3);
+          pdf.setTextColor(0, 0, 0);
+        }
+      } else {
+        pdf.setFontSize(7);
+        pdf.setTextColor(128, 128, 128);
+        pdf.text('-', x + colWidths.photos / 2, yPosition + rowHeight / 2 + 1, { align: 'center' });
+      }
+
+      yPosition += rowHeight;
+    }
+
+    // Fin de la catégorie - la prochaine catégorie commencera sur une nouvelle page
   }
 
-  // Pied de page avec note totale et légende (sur la dernière page seulement)
-  let totalPages = pdf.getNumberOfPages();
-  pdf.setPage(totalPages);
+  // ---- Pied de page : NOTE TOTALE + légende (sur la dernière page) ----
+  // Utiliser la dernière page de la dernière catégorie
+  const lastPage = pdf.getNumberOfPages();
+  pdf.setPage(lastPage);
   
-  // Vérifier s'il y a assez d'espace pour le pied de page
-  // Si pas assez d'espace, ajouter une nouvelle page
-  if (yPosition + 20 > pageHeight - 20) {
+  // Calculer la position Y sur cette page
+  // On va placer le footer en bas de la dernière page utilisée
+  let footerY = pageHeight - 25;
+  
+  // Si la dernière page est trop remplie, ajouter une nouvelle page pour le footer
+  if (footerY < 50) {
     pdf.addPage();
-    yPosition = margin;
-    totalPages = pdf.getNumberOfPages(); // Mettre à jour le nombre total de pages
-  } else {
-    yPosition += 5;
+    footerY = pageHeight - 25;
   }
-  
-  // Note totale et nombre de KO
-  pdf.setFontSize(10);
+
+  // Note totale
+  pdf.setFontSize(9);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(0, 0, 0);
-  const totalScoreText = results.totalScore !== null 
-    ? formatNumber(results.totalScore, 2)
-    : '—';
-  
-  // Afficher la note totale avec la pastille de couleur
-  const noteText = `NOTE TOTALE obtenue pour l'ensemble des Bonnes Pratiques d'Hygiène : ${totalScoreText}%`;
-  pdf.text(noteText, margin, yPosition);
-  
-  // Ajouter la pastille de couleur à côté de la note
-  if (results.totalScore !== null) {
-    const badgeX = margin + pdf.getTextWidth(noteText) + 3;
-    drawScoreBadge(pdf, badgeX, yPosition - 1, results.totalScore);
-  }
-  
-  pdf.text(`nombre de KO : ${results.numberOfKO}`, margin + 100, yPosition);
-  
-  yPosition += 8;
-  
-  // Légende - toujours affichée
+  const totalScoreValue = results.totalScore !== null ? formatNumber(results.totalScore, 2) : '—';
+
+  // Tableau de note totale en bas
+  const footerTableWidth = availableWidth;
+  const footerRowHeight = 12;
+
+  // Cellule "NOTE TOTALE obtenue..."
+  pdf.setDrawColor(0, 0, 0);
+  pdf.setLineWidth(0.5);
+
+  const col1W = footerTableWidth * 0.30;
+  const col2W = footerTableWidth * 0.10;
+  const col3W = footerTableWidth * 0.15;
+  const col4W = footerTableWidth * 0.10;
+  const col5W = footerTableWidth * 0.35;
+
+  // Ligne du total
+  pdf.rect(margin, footerY, col1W, footerRowHeight);
+  pdf.setFontSize(7);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(0, 0, 0);
+  const totalLabel = pdf.splitTextToSize('NOTE TOTALE obtenue pour l\'ensemble des Bonnes Pratiques d\'Hygiène :', col1W - 4);
+  totalLabel.forEach((line: string, idx: number) => {
+    pdf.text(line, margin + 2, footerY + 3 + (idx * 3));
+  });
+
+  // Score avec pastille
+  pdf.rect(margin + col1W, footerY, col2W, footerRowHeight);
   pdf.setFontSize(9);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(0, 0, 0);
+  const scoreX = margin + col1W + col2W / 2;
+  pdf.text(`${totalScoreValue}%`, scoreX, footerY + footerRowHeight / 2 + 2, { align: 'center' });
+  
+  // Pastille de score total à côté du score
+  if (results.totalScore !== null) {
+    drawScoreBadge(pdf, scoreX - 8, footerY + footerRowHeight / 2 - 1, results.totalScore, 4);
+  }
+
+  // "nombre de KO :"
+  pdf.rect(margin + col1W + col2W, footerY, col3W, footerRowHeight);
+  pdf.setFontSize(7);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text('nombre de KO :', margin + col1W + col2W + col3W / 2, footerY + footerRowHeight / 2 + 1, { align: 'center' });
+
+  // Nombre KO (fond rouge)
+  pdf.rect(margin + col1W + col2W + col3W, footerY, col4W, footerRowHeight);
+  pdf.setFillColor(220, 53, 69);
+  pdf.rect(margin + col1W + col2W + col3W, footerY, col4W, footerRowHeight, 'FD');
+  pdf.setFontSize(10);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(255, 255, 255);
+  pdf.text(`${results.numberOfKO}`, margin + col1W + col2W + col3W + col4W / 2, footerY + footerRowHeight / 2 + 2, { align: 'center' });
+
+  // Légende
+  pdf.rect(margin + col1W + col2W + col3W + col4W, footerY, col5W, footerRowHeight);
+  pdf.setFontSize(6);
   pdf.setFont('helvetica', 'normal');
   pdf.setTextColor(0, 0, 0);
-  const legendText = '* 1 : conforme ; 0,7 : non-conformité mineur ; 0,3 : non-conformité moyenne ; 0 : non-conformité majeur';
-  pdf.text(legendText, margin, yPosition);
+  const legendLines = pdf.splitTextToSize('* 1 : conforme ; 0,7 : non-conformité mineur ; 0,3 : non-conformité moyenne ; 0 : non-conformité majeur', col5W - 4);
+  legendLines.forEach((line: string, idx: number) => {
+    pdf.text(line, margin + col1W + col2W + col3W + col4W + 2, footerY + 3.5 + (idx * 2.5));
+  });
+}
 
-  // Numéro de page sur toutes les pages (recalculer après ajout éventuel de page)
-  totalPages = pdf.getNumberOfPages();
+// ========================================================================
+// FONCTION PRINCIPALE : Génération du PDF complet
+// ========================================================================
+export async function generatePDFReport(audit: Audit, results: AuditResults): Promise<void> {
+  console.log('Génération PDF - Audit:', audit);
+
+  const pdf = new jsPDF('p', 'mm', 'a4');
+
+  // Page 1 : Cartographie Radar
+  generateRadarChartPage(pdf, audit, results);
+
+  // Page 2 : Actions Correctives Attendues
+  pdf.addPage();
+  generateCorrectiveActionsPage(pdf, audit);
+
+  // Pages suivantes : Audit détaillé par catégorie
+  await generateAuditDetailPages(pdf, audit, results);
+
+  // Numéro de page sur toutes les pages
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const totalPages = pdf.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     pdf.setPage(i);
     pdf.setFontSize(8);
     pdf.setTextColor(128, 128, 128);
-    pdf.text(
-      `Page ${i} / ${totalPages}`,
-      pageWidth / 2,
-      pageHeight - 10,
-      { align: 'center' }
-    );
+    pdf.text(`${i}/${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
   }
 
   // Télécharger le PDF
